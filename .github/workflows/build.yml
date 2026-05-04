@@ -1,0 +1,39 @@
+name: Build Windows EXE
+
+# Запускается автоматически при каждом push в main,
+# или вручную через кнопку "Run workflow" на странице Actions.
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install PyQt5 pynput pyinstaller
+
+      - name: Build PhoenixMacro.exe
+        run: >
+          pyinstaller
+          --onefile
+          --windowed
+          --name PhoenixMacro
+          phoenix_macro.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhoenixMacro-Windows
+          path: dist\PhoenixMacro.exe
+          retention-days: 90
