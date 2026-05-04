@@ -156,6 +156,30 @@ QPushButton:disabled {{
 }}
 """
 
+# Compact variant for dialog buttons (smaller padding, fits in 36px height)
+BTN_DIALOG_OK = f"""
+QPushButton {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 #7a1200, stop:1 #4a0800);
+    color: {TEXT};
+    border: 1px solid {FIRE1};
+    border-radius: 7px;
+    padding: 6px 22px;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 1px;
+}}
+QPushButton:hover {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 #aa1800, stop:1 #7a1000);
+    border-color: {FIRE2};
+}}
+QPushButton:pressed {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 #cc2000, stop:1 #991800);
+}}
+"""
+
 APP_STYLE = f"""
 QMainWindow, QWidget {{
     background-color: {BG};
@@ -513,8 +537,8 @@ class NameDialog(QDialog):
         btn_cancel.clicked.connect(self.reject)
         row.addWidget(btn_cancel)
 
-        btn_save = QPushButton("  Save  ")
-        btn_save.setStyleSheet(BTN_CREATE_IDLE)
+        btn_save = QPushButton("Save")
+        btn_save.setStyleSheet(BTN_DIALOG_OK)
         btn_save.setFixedHeight(36)
         btn_save.setCursor(Qt.PointingHandCursor)
         btn_save.clicked.connect(self.accept)
@@ -558,7 +582,7 @@ class ConfirmDialog(QDialog):
         row.addWidget(btn_no)
 
         btn_yes = QPushButton("Yes, Delete")
-        btn_yes.setStyleSheet(BTN_CREATE_IDLE)
+        btn_yes.setStyleSheet(BTN_DIALOG_OK)
         btn_yes.setFixedHeight(36)
         btn_yes.setCursor(Qt.PointingHandCursor)
         btn_yes.clicked.connect(self.accept)
@@ -1079,7 +1103,7 @@ class PhoenixMacro(QMainWindow):
         r = QHBoxLayout()
         r.addStretch()
         ok = QPushButton("OK")
-        ok.setStyleSheet(BTN_CREATE_IDLE)
+        ok.setStyleSheet(BTN_DIALOG_OK)
         ok.setFixedHeight(34)
         ok.clicked.connect(dlg.accept)
         r.addWidget(ok)
