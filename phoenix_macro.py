@@ -43,7 +43,7 @@ SCRIPTS_DIR = BASE_DIR / "scripts"
 SCRIPTS_DIR.mkdir(exist_ok=True)
 
 # ── Version & Update ──────────────────────────────────────────────────────────
-VERSION     = "1.1.0"                        # bump this with each release tag
+VERSION     = "1.2.0"                        # bump this with each release tag
 GITHUB_REPO = "PhoenixAnalist/phoenix-macro"
 
 # subprocess.CREATE_NO_WINDOW is Windows-only
