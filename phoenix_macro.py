@@ -9,6 +9,7 @@ import sys
 import json
 import time
 import threading
+import subprocess
 from pathlib import Path
 from datetime import datetime
 
@@ -40,6 +41,13 @@ else:
 
 SCRIPTS_DIR = BASE_DIR / "scripts"
 SCRIPTS_DIR.mkdir(exist_ok=True)
+
+# ── Version & Update ──────────────────────────────────────────────────────────
+VERSION     = "1.1.0"                        # bump this with each release tag
+GITHUB_REPO = "PhoenixAnalist/phoenix-macro"
+
+# subprocess.CREATE_NO_WINDOW is Windows-only
+_NO_WIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 # ── Phoenix Colour Palette ─────────────────────────────────────────────────────
 BG       = "#090909"   # near-black window background
@@ -153,6 +161,35 @@ QPushButton:hover {{
 QPushButton:disabled {{
     color: #2a2a2a;
     border-color: #1a1a1a;
+}}
+"""
+
+BTN_UPDATE = f"""
+QPushButton {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 #4a3000, stop:1 #2d1e00);
+    color: {FIRE3};
+    border: 1px solid {FIRE2};
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-size: 12px;
+    letter-spacing: 1px;
+    font-weight: bold;
+}}
+QPushButton:hover {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 #6a4400, stop:1 #3d2800);
+    border-color: {FIRE3};
+    color: #ffffff;
+}}
+QPushButton:pressed {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 #7a5000, stop:1 #4d3200);
+}}
+QPushButton:disabled {{
+    color: {DIM};
+    border-color: #252525;
+    background: #111111;
 }}
 """
 
@@ -481,6 +518,112 @@ class Player(QThread):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# UpdateChecker  (runs once at startup, silently)
+# ─────────────────────────────────────────────────────────────────────────────
+class UpdateChecker(QThread):
+    """Fetches the latest GitHub release and compares its tag with VERSION.
+    Emits update_available only when a newer version exists and has an .exe asset.
+    All network errors are swallowed — startup is never blocked.
+    NOTE: the GitHub repo must be public for unauthenticated API access.
+    """
+    update_available = pyqtSignal(str, str)   # (new_version, download_url)
+
+    def run(self):
+        try:
+            import urllib.request
+            import ssl as _ssl
+
+            ctx = _ssl.create_default_context()
+            req = urllib.request.Request(
+                f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+                headers={"User-Agent": "PhoenixMacro-Updater/1.0"},
+            )
+            with urllib.request.urlopen(req, context=ctx, timeout=8) as resp:
+                data = json.loads(resp.read().decode())
+
+            tag = data.get("tag_name", "").lstrip("v")
+            if not tag:
+                return
+
+            # Find the Windows exe asset
+            url = next(
+                (a["browser_download_url"]
+                 for a in data.get("assets", [])
+                 if a.get("name", "").lower().endswith(".exe")),
+                None,
+            )
+            if not url:
+                return
+
+            def _ver(s):
+                try:
+                    return tuple(int(x) for x in s.split("."))
+                except Exception:
+                    return (0,)
+
+            if _ver(tag) > _ver(VERSION):
+                self.update_available.emit(tag, url)
+
+        except Exception:
+            pass   # silently ignore any network / parse errors
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Downloader  (background download with progress)
+# ─────────────────────────────────────────────────────────────────────────────
+class Downloader(QThread):
+    """Downloads a URL to a local file, emitting integer progress (0-100)."""
+    progress = pyqtSignal(int)   # 0-100 %
+    done     = pyqtSignal(str)   # local path on success
+    error    = pyqtSignal(str)
+
+    def __init__(self, url: str, dest: str):
+        super().__init__()
+        self.url    = url
+        self.dest   = dest
+        self._abort = False
+
+    def stop(self):
+        self._abort = True
+
+    def run(self):
+        try:
+            import urllib.request
+            import ssl as _ssl
+
+            ctx = _ssl.create_default_context()
+            req = urllib.request.Request(
+                self.url,
+                headers={"User-Agent": "PhoenixMacro-Updater/1.0"},
+            )
+            with urllib.request.urlopen(req, context=ctx, timeout=60) as resp:
+                total = int(resp.headers.get("Content-Length") or 0)
+                done  = 0
+                with open(self.dest, "wb") as fh:
+                    while not self._abort:
+                        chunk = resp.read(65536)
+                        if not chunk:
+                            break
+                        fh.write(chunk)
+                        done += len(chunk)
+                        if total:
+                            self.progress.emit(min(99, done * 100 // total))
+
+            if self._abort:
+                try:
+                    Path(self.dest).unlink(missing_ok=True)
+                except Exception:
+                    pass
+                return
+
+            self.progress.emit(100)
+            self.done.emit(self.dest)
+
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Custom dark-themed dialog for naming a saved script
 # ─────────────────────────────────────────────────────────────────────────────
 class NameDialog(QDialog):
@@ -619,6 +762,13 @@ class PhoenixMacro(QMainWindow):
         self._build_ui()
         self._refresh_scripts()
 
+        # Check for updates in the background — does not block startup
+        self._update_url  = ""
+        self._downloader: Downloader | None = None
+        self._upd_checker = UpdateChecker()
+        self._upd_checker.update_available.connect(self._on_update_available)
+        self._upd_checker.start()
+
     # ── UI Construction ────────────────────────────────────────────────────
     def _build_ui(self):
         self.setWindowTitle("Phoenix Macro")
@@ -686,7 +836,7 @@ class PhoenixMacro(QMainWindow):
         self._btn_start.clicked.connect(self._on_start)
         cl.addWidget(self._btn_start)
 
-        # Bottom row: delete + progress readout
+        # Bottom row: delete + update (hidden until available) + progress
         bot = QHBoxLayout()
         bot.setSpacing(12)
 
@@ -697,6 +847,15 @@ class PhoenixMacro(QMainWindow):
         self._btn_del.setEnabled(False)
         self._btn_del.clicked.connect(self._on_delete)
         bot.addWidget(self._btn_del)
+
+        self._btn_update = QPushButton("↑  UPDATE")
+        self._btn_update.setStyleSheet(BTN_UPDATE)
+        self._btn_update.setMinimumHeight(36)
+        self._btn_update.setCursor(Qt.PointingHandCursor)
+        self._btn_update.setVisible(False)
+        self._btn_update.clicked.connect(self._on_update_click)
+        bot.addWidget(self._btn_update)
+
         bot.addStretch()
 
         self._prog_lbl = QLabel("")
@@ -1068,6 +1227,73 @@ class PhoenixMacro(QMainWindow):
                 pass
             self._refresh_scripts()
 
+    # ── Update ─────────────────────────────────────────────────────────────
+    def _on_update_available(self, version: str, url: str):
+        """Called from UpdateChecker when a newer release exists on GitHub."""
+        self._update_url = url
+        self._btn_update.setText(f"↑  UPDATE  v{version}")
+        self._btn_update.setVisible(True)
+
+    def _on_update_click(self):
+        if not self._update_url:
+            return
+        if self._downloader and self._downloader.isRunning():
+            return   # already in progress
+
+        dest = str(BASE_DIR / "PhoenixMacro_update.exe")
+        self._downloader = Downloader(self._update_url, dest)
+        self._downloader.progress.connect(self._on_dl_progress)
+        self._downloader.done.connect(self._on_dl_done)
+        self._downloader.error.connect(self._on_dl_error)
+        self._downloader.start()
+
+        self._btn_update.setText("Downloading…  0%")
+        self._btn_update.setEnabled(False)
+
+    def _on_dl_progress(self, pct: int):
+        self._btn_update.setText(f"Downloading…  {pct}%")
+
+    def _on_dl_done(self, path: str):
+        self._btn_update.setText("↑  Applying…")
+        self._apply_update(path)
+
+    def _on_dl_error(self, msg: str):
+        self._btn_update.setText(f"↑  UPDATE  (retry)")
+        self._btn_update.setEnabled(True)
+        self._show_error(f"Download failed:\n{msg}")
+
+    def _apply_update(self, new_exe: str):
+        """Replace this exe after the process exits using a helper .bat script."""
+        if not getattr(sys, 'frozen', False):
+            # Running from source — just tell the user where the file is
+            self._show_info(
+                "Update downloaded.\n\n"
+                f"Replace PhoenixMacro.exe manually with:\n{new_exe}")
+            return
+
+        current_exe = sys.executable
+        bat_path = str(BASE_DIR / "_phoenix_update.bat")
+        bat = (
+            "@echo off\n"
+            "timeout /t 2 /nobreak >nul\n"
+            f"move /y \"{new_exe}\" \"{current_exe}\"\n"
+            f"start \"\" \"{current_exe}\"\n"
+            "del \"%~f0\"\n"
+        )
+        try:
+            with open(bat_path, "w") as fh:
+                fh.write(bat)
+            subprocess.Popen(
+                ["cmd", "/c", bat_path],
+                creationflags=_NO_WIN,
+                close_fds=True,
+            )
+        except Exception as exc:
+            self._show_error(f"Could not launch update script:\n{exc}")
+            return
+
+        QApplication.instance().quit()
+
     # ── UI Helpers ─────────────────────────────────────────────────────────
     def _reset_ui(self):
         self._btn_create.setText("⬤   CREATE SCRIPT")
@@ -1120,6 +1346,9 @@ class PhoenixMacro(QMainWindow):
         if self._playing and self._player:
             self._player.stop()
             self._player.wait(2000)
+        if self._downloader and self._downloader.isRunning():
+            self._downloader.stop()
+            self._downloader.wait(2000)
         event.accept()
 
 
@@ -1136,7 +1365,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("Phoenix Macro")
-    app.setApplicationVersion("1.0")
+    app.setApplicationVersion(VERSION)
 
     if not HAS_PYNPUT:
         # Show a warning but still open the app so the user can see the message

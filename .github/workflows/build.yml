@@ -1,10 +1,12 @@
 name: Build Windows EXE
 
-# Запускается автоматически при каждом push в main,
-# или вручную через кнопку "Run workflow" на странице Actions.
+# Runs automatically on every push to main,
+# on version tags (e.g. v1.1.0) to create a public release,
+# or manually via "Run workflow".
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*.*.*' ]
   workflow_dispatch:
 
 jobs:
@@ -37,3 +39,12 @@ jobs:
           name: PhoenixMacro-Windows
           path: dist\PhoenixMacro.exe
           retention-days: 90
+
+      # Only create a GitHub Release when triggered by a version tag (v*.*.*)
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Phoenix Macro ${{ github.ref_name }}"
+          files: dist\PhoenixMacro.exe
+          generate_release_notes: false
