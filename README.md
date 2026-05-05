@@ -112,6 +112,9 @@ pyinstaller --onefile --windowed --name PhoenixMacro --icon phoenix.ico --add-da
 
 ## Changelog
 
+### v1.6.1
+- **Richer themes** — Midnight Ocean now uses vivid cyan + warm amber accents (was monochrome blue); Neon Storm redesigned as cyberpunk multi-color — hot pink, electric cyan, and neon yellow-green
+
 ### v1.6.0
 - **Horizontal layout** — window now uses a landscape split: Script Library on the left, controls on the right
 - **Gradient background** — window background uses a diagonal gradient instead of flat black

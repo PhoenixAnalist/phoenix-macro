@@ -58,7 +58,7 @@ if getattr(sys, 'frozen', False):
                 pass
 
 # ── Version & Update ──────────────────────────────────────────────────────────
-VERSION     = "1.6.0"
+VERSION     = "1.6.1"
 GITHUB_REPO = "PhoenixAnalist/phoenix-macro"
 
 _NO_WIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -145,48 +145,48 @@ THEMES = {
         'BTN2H':       '#663a00',
     },
     'Midnight Ocean': {
-        'BG':          '#030b18',
-        'BG_TOP':      '#001428',
-        'BG_MID':      '#000c1e',
-        'SURF':        '#061525',
-        'SURF2':       '#091e35',
-        'BORDER':      '#003355',
-        'ACCENT1':     '#0055aa',
-        'ACCENT2':     '#0088cc',
-        'ACCENT3':     '#00ccff',
-        'TEXT':        '#d0e8ff',
-        'DIM':         '#3d6080',
-        'STATE1':      '#00eeff',
-        'STATE1_DARK': '#003344',
-        'STATE2':      '#00ffaa',
-        'BTN1A':       '#003d88',
-        'BTN1B':       '#002255',
-        'BTN1H':       '#0055aa',
-        'BTN2A':       '#003366',
-        'BTN2B':       '#001e3d',
-        'BTN2H':       '#004488',
+        'BG':          '#030c18',
+        'BG_TOP':      '#00101e',
+        'BG_MID':      '#001525',
+        'SURF':        '#061a2d',
+        'SURF2':       '#0a2038',
+        'BORDER':      '#0d3555',
+        'ACCENT1':     '#00c8e8',   # vivid cyan — primary interactive
+        'ACCENT2':     '#e89a28',   # warm amber — secondary highlights
+        'ACCENT3':     '#c0eeff',   # pale ice blue — light labels
+        'TEXT':        '#e8f4fc',
+        'DIM':         '#4a7a99',
+        'STATE1':      '#00deff',   # bright cyan (recording)
+        'STATE1_DARK': '#001c2a',
+        'STATE2':      '#e89a28',   # amber (playing/loop)
+        'BTN1A':       '#004d6a',   # deep teal
+        'BTN1B':       '#002d44',
+        'BTN1H':       '#00698a',
+        'BTN2A':       '#002244',   # dark navy
+        'BTN2B':       '#001228',
+        'BTN2H':       '#003366',
     },
     'Neon Storm': {
-        'BG':          '#08000f',
-        'BG_TOP':      '#180028',
-        'BG_MID':      '#0d0018',
-        'SURF':        '#0f001e',
-        'SURF2':       '#18002e',
-        'BORDER':      '#3d006e',
-        'ACCENT1':     '#7700cc',
-        'ACCENT2':     '#aa00ff',
-        'ACCENT3':     '#dd88ff',
-        'TEXT':        '#f0dcff',
-        'DIM':         '#664499',
-        'STATE1':      '#ff00ff',
-        'STATE1_DARK': '#440033',
-        'STATE2':      '#cc88ff',
-        'BTN1A':       '#550088',
-        'BTN1B':       '#330055',
-        'BTN1H':       '#7700aa',
-        'BTN2A':       '#440066',
-        'BTN2B':       '#280044',
-        'BTN2H':       '#5d0088',
+        'BG':          '#050508',
+        'BG_TOP':      '#0d0018',
+        'BG_MID':      '#080010',
+        'SURF':        '#0d0020',
+        'SURF2':       '#120030',
+        'BORDER':      '#3d0060',
+        'ACCENT1':     '#f02090',   # hot pink/magenta — primary interactive
+        'ACCENT2':     '#00eecc',   # electric cyan — secondary highlights
+        'ACCENT3':     '#bbff44',   # neon yellow-green — light labels
+        'TEXT':        '#f0e8ff',
+        'DIM':         '#7755aa',
+        'STATE1':      '#ff2299',   # hot pink (recording)
+        'STATE1_DARK': '#330020',
+        'STATE2':      '#00eecc',   # electric cyan (playing/loop)
+        'BTN1A':       '#880055',   # deep magenta
+        'BTN1B':       '#550033',
+        'BTN1H':       '#aa0066',
+        'BTN2A':       '#003344',   # deep cyan-navy (contrasts BTN1)
+        'BTN2B':       '#001e28',
+        'BTN2H':       '#004455',
     },
 }
 
@@ -490,15 +490,15 @@ _THEME_BTN_STYLES = {
                   "border-radius:10px;padding:6px 12px;font-size:12px;font-weight:bold;",
     },
     'Midnight Ocean': {
-        'idle':   "background:#001830;color:#0088cc;border:2px solid #002244;"
+        'idle':   "background:#001830;color:#00c8e8;border:2px solid #0d3555;"
                   "border-radius:10px;padding:6px 12px;font-size:12px;font-weight:bold;",
-        'active': "background:#003355;color:#00ccff;border:2px solid #0088cc;"
+        'active': "background:#004d6a;color:#c0eeff;border:2px solid #00c8e8;"
                   "border-radius:10px;padding:6px 12px;font-size:12px;font-weight:bold;",
     },
     'Neon Storm': {
-        'idle':   "background:#200040;color:#aa00ff;border:2px solid #330055;"
+        'idle':   "background:#0d0018;color:#f02090;border:2px solid #3d0060;"
                   "border-radius:10px;padding:6px 12px;font-size:12px;font-weight:bold;",
-        'active': "background:#3d0070;color:#dd88ff;border:2px solid #aa00ff;"
+        'active': "background:#880055;color:#bbff44;border:2px solid #f02090;"
                   "border-radius:10px;padding:6px 12px;font-size:12px;font-weight:bold;",
     },
 }
