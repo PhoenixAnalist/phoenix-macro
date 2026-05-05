@@ -47,7 +47,7 @@ SETTINGS_FILE = BASE_DIR / "phoenix_settings.json"
 SCRIPTS_DIR.mkdir(exist_ok=True)
 
 # ── Version & Update ──────────────────────────────────────────────────────────
-VERSION     = "1.4.0"                        # bump this with each release tag
+VERSION     = "1.5.0"                        # bump this with each release tag
 GITHUB_REPO = "PhoenixAnalist/phoenix-macro"
 
 # subprocess.CREATE_NO_WINDOW is Windows-only
@@ -1464,11 +1464,31 @@ class PhoenixMacro(QMainWindow):
         # Divider
         cl.addWidget(self._divider("SAVED SCRIPTS"))
 
+        # Search box
+        self._search_inp = QLineEdit()
+        self._search_inp.setPlaceholderText("Search scripts…")
+        self._search_inp.setClearButtonEnabled(True)
+        self._search_inp.setFixedHeight(32)
+        self._search_inp.setStyleSheet(f"""
+            QLineEdit {{
+                background: {SURF};
+                color: {TEXT};
+                border: 1px solid {BORDER};
+                border-radius: 6px;
+                padding: 0 10px;
+                font-size: 12px;
+                selection-background-color: {FIRE1};
+            }}
+            QLineEdit:focus {{ border-color: {FIRE2}; }}
+        """)
+        self._search_inp.textChanged.connect(self._on_search_changed)
+        cl.addWidget(self._search_inp)
+
         # Script list
         self._list = QListWidget()
         self._list.setMinimumHeight(160)
         self._list.itemSelectionChanged.connect(self._on_sel_changed)
-        self._list.itemDoubleClicked.connect(self._on_start)
+        self._list.itemDoubleClicked.connect(self._on_rename_script)
         cl.addWidget(self._list)
 
         # Script meta info
@@ -1846,7 +1866,7 @@ class PhoenixMacro(QMainWindow):
             item.setData(Qt.UserRole + 1, meta)
             self._list.addItem(item)
 
-        self._on_sel_changed()
+        self._on_search_changed()  # apply active filter and update buttons
 
     def _on_sel_changed(self):
         sel = bool(self._list.selectedItems())
@@ -1864,6 +1884,59 @@ class PhoenixMacro(QMainWindow):
                 self._meta_lbl.setText("")
         else:
             self._meta_lbl.setText("")
+
+    def _on_search_changed(self, text: str = ""):
+        q = (text if isinstance(text, str) else self._search_inp.text()).lower().strip()
+        for i in range(self._list.count()):
+            item = self._list.item(i)
+            item.setHidden(bool(q) and q not in item.text().lower())
+        self._on_sel_changed()
+
+    def _on_rename_script(self, item):
+        if self._recording or self._playing or self._countdown_val > 0:
+            return
+        fp = Path(item.data(Qt.UserRole))
+        if not fp.exists():
+            self._show_error("Script file not found.")
+            self._refresh_scripts()
+            return
+        try:
+            with open(fp, 'r', encoding='utf-8') as fh:
+                data = json.load(fh)
+            current_name = data.get('name', fp.stem)
+        except Exception:
+            current_name = fp.stem
+
+        dlg = NameDialog(self, current_name)
+        dlg.setWindowTitle("Rename Script")
+        if dlg.exec_() != QDialog.Accepted:
+            return
+
+        raw = dlg.get_name().strip()
+        new_name = "".join(c for c in raw if c.isalnum() or c in " _-").strip()
+        if not new_name or new_name == current_name:
+            return
+
+        new_fp = fp.parent / f"{new_name}.json"
+        if new_fp.exists():
+            self._show_error(f'A script named "{new_name}" already exists.')
+            return
+
+        try:
+            data['name'] = new_name
+            with open(fp, 'w', encoding='utf-8') as fh:
+                json.dump(data, fh, indent=2, ensure_ascii=False)
+            fp.rename(new_fp)
+        except Exception as exc:
+            self._show_error(f"Rename failed:\n{exc}")
+            return
+
+        self._refresh_scripts()
+        new_fp_str = str(new_fp)
+        for i in range(self._list.count()):
+            if self._list.item(i).data(Qt.UserRole) == new_fp_str:
+                self._list.setCurrentRow(i)
+                break
 
     # ── Button Handlers ────────────────────────────────────────────────────
     def _on_create(self):

@@ -112,6 +112,10 @@ pyinstaller --onefile --windowed --name PhoenixMacro --icon phoenix.ico --add-da
 
 ## Changelog
 
+### v1.5.0
+- **Script search** — filter bar above the script list; type to instantly narrow results
+- **Rename scripts** — double-click any script name to rename it (updates the JSON file and filename)
+
 ### v1.4.0
 - Added **Action Editor** — inspect and delete individual events in a script
 - Added **Settings window** — rebind hotkeys, manual update check
