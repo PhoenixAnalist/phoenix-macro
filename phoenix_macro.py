@@ -888,8 +888,8 @@ class PhoenixMacro(QMainWindow):
     # ── UI Construction ────────────────────────────────────────────────────
     def _build_ui(self):
         self.setWindowTitle("Phoenix Macro")
-        self.setMinimumSize(500, 720)
-        self.resize(520, 780)
+        self.setMinimumSize(580, 720)
+        self.resize(600, 780)
         self.setStyleSheet(APP_STYLE)
         self.setWindowIcon(self._make_icon())
 
