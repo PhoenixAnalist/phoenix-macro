@@ -42,15 +42,72 @@ else:
     BASE_DIR   = Path(__file__).parent
     BUNDLE_DIR = BASE_DIR
 
-SCRIPTS_DIR = BASE_DIR / "scripts"
+SCRIPTS_DIR   = BASE_DIR / "scripts"
+SETTINGS_FILE = BASE_DIR / "phoenix_settings.json"
 SCRIPTS_DIR.mkdir(exist_ok=True)
 
 # ── Version & Update ──────────────────────────────────────────────────────────
-VERSION     = "1.3.1"                        # bump this with each release tag
+VERSION     = "1.4.0"                        # bump this with each release tag
 GITHUB_REPO = "PhoenixAnalist/phoenix-macro"
 
 # subprocess.CREATE_NO_WINDOW is Windows-only
 _NO_WIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+# ── Pynput key map (shared by Recorder, GlobalHotkeys, Player, Settings) ──────
+if HAS_PYNPUT:
+    PYNPUT_KEY_MAP = {
+        'Key.space': Key.space, 'Key.enter': Key.enter,
+        'Key.return': Key.enter, 'Key.tab': Key.tab,
+        'Key.backspace': Key.backspace, 'Key.delete': Key.delete,
+        'Key.esc': Key.esc, 'Key.escape': Key.esc,
+        'Key.shift': Key.shift, 'Key.shift_l': Key.shift_l,
+        'Key.shift_r': Key.shift_r,
+        'Key.ctrl': Key.ctrl, 'Key.ctrl_l': Key.ctrl_l,
+        'Key.ctrl_r': Key.ctrl_r,
+        'Key.alt': Key.alt, 'Key.alt_l': Key.alt_l,
+        'Key.alt_r': Key.alt_r, 'Key.alt_gr': Key.alt_gr,
+        'Key.cmd': Key.cmd, 'Key.cmd_l': Key.cmd_l,
+        'Key.cmd_r': Key.cmd_r,
+        'Key.up': Key.up, 'Key.down': Key.down,
+        'Key.left': Key.left, 'Key.right': Key.right,
+        'Key.home': Key.home, 'Key.end': Key.end,
+        'Key.page_up': Key.page_up, 'Key.page_down': Key.page_down,
+        'Key.insert': Key.insert, 'Key.caps_lock': Key.caps_lock,
+        'Key.num_lock': Key.num_lock,
+        'Key.f1': Key.f1,  'Key.f2': Key.f2,  'Key.f3': Key.f3,
+        'Key.f4': Key.f4,  'Key.f5': Key.f5,  'Key.f6': Key.f6,
+        'Key.f7': Key.f7,  'Key.f8': Key.f8,  'Key.f9': Key.f9,
+        'Key.f10': Key.f10, 'Key.f11': Key.f11, 'Key.f12': Key.f12,
+        'Key.print_screen': Key.print_screen,
+        'Key.scroll_lock': Key.scroll_lock, 'Key.pause': Key.pause,
+        'Key.media_play_pause': Key.media_play_pause,
+        'Key.media_volume_up': Key.media_volume_up,
+        'Key.media_volume_down': Key.media_volume_down,
+        'Key.media_volume_mute': Key.media_volume_mute,
+        'Key.media_next': Key.media_next,
+        'Key.media_previous': Key.media_previous,
+    }
+else:
+    PYNPUT_KEY_MAP = {}
+
+
+def parse_pynput_key(s: str):
+    """Convert stored key string ('Key.f9', 'a') to a pynput key object."""
+    if not s:
+        return None
+    if len(s) == 1:
+        return s
+    return PYNPUT_KEY_MAP.get(s)
+
+
+def key_to_display(s: str) -> str:
+    """Convert stored key string to a short human-readable label (e.g. 'F10')."""
+    if not s:
+        return "—"
+    if len(s) == 1:
+        return s.upper()
+    return s.replace('Key.', '').upper().replace('_', ' ')
+
 
 # ── Phoenix Colour Palette ─────────────────────────────────────────────────────
 BG       = "#090909"   # near-black window background
@@ -343,6 +400,7 @@ class Recorder(QObject):
         self._lock = threading.Lock()
         self._listeners: list = []
         self.recording = False
+        self._stop_key_str = 'Key.f9'   # configurable; updated from AppSettings
 
     # ── public API ─────────────────────────────────────────────────────────
     def start(self):
@@ -373,9 +431,10 @@ class Recorder(QObject):
                        't': time.perf_counter() - rec._start})
 
         def on_press(key):
-            # F9 = global stop-recording hotkey
+            # configurable stop-recording hotkey (default F9)
             try:
-                if key == Key.f9:
+                stop_key = parse_pynput_key(rec._stop_key_str)
+                if stop_key is not None and key == stop_key:
                     rec.hotkey_stop.emit()
                     return
             except Exception:
@@ -524,45 +583,7 @@ class Player(QThread):
 
     @staticmethod
     def _key(s: str):
-        if not s:
-            return None
-        if len(s) == 1:
-            return s
-        # Map stored string representations back to pynput Key objects
-        _MAP = {
-            'Key.space': Key.space, 'Key.enter': Key.enter,
-            'Key.return': Key.enter, 'Key.tab': Key.tab,
-            'Key.backspace': Key.backspace, 'Key.delete': Key.delete,
-            'Key.esc': Key.esc, 'Key.escape': Key.esc,
-            'Key.shift': Key.shift, 'Key.shift_l': Key.shift_l,
-            'Key.shift_r': Key.shift_r,
-            'Key.ctrl': Key.ctrl, 'Key.ctrl_l': Key.ctrl_l,
-            'Key.ctrl_r': Key.ctrl_r,
-            'Key.alt': Key.alt, 'Key.alt_l': Key.alt_l,
-            'Key.alt_r': Key.alt_r, 'Key.alt_gr': Key.alt_gr,
-            'Key.cmd': Key.cmd, 'Key.cmd_l': Key.cmd_l,
-            'Key.cmd_r': Key.cmd_r,
-            'Key.up': Key.up, 'Key.down': Key.down,
-            'Key.left': Key.left, 'Key.right': Key.right,
-            'Key.home': Key.home, 'Key.end': Key.end,
-            'Key.page_up': Key.page_up, 'Key.page_down': Key.page_down,
-            'Key.insert': Key.insert, 'Key.caps_lock': Key.caps_lock,
-            'Key.num_lock': Key.num_lock,
-            'Key.f1': Key.f1,  'Key.f2': Key.f2,  'Key.f3': Key.f3,
-            'Key.f4': Key.f4,  'Key.f5': Key.f5,  'Key.f6': Key.f6,
-            'Key.f7': Key.f7,  'Key.f8': Key.f8,  'Key.f9': Key.f9,
-            'Key.f10': Key.f10,'Key.f11': Key.f11,'Key.f12': Key.f12,
-            'Key.print_screen': Key.print_screen,
-            'Key.scroll_lock': Key.scroll_lock,
-            'Key.pause': Key.pause,
-            'Key.media_play_pause': Key.media_play_pause,
-            'Key.media_volume_up': Key.media_volume_up,
-            'Key.media_volume_down': Key.media_volume_down,
-            'Key.media_volume_mute': Key.media_volume_mute,
-            'Key.media_next': Key.media_next,
-            'Key.media_previous': Key.media_previous,
-        }
-        return _MAP.get(s)
+        return parse_pynput_key(s)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -570,22 +591,23 @@ class Player(QThread):
 # ─────────────────────────────────────────────────────────────────────────────
 class GlobalHotkeys(QObject):
     """Runs a permanent pynput keyboard listener that emits Qt signals.
-    F10 toggles script playback from any window without Alt-Tab.
-    Safe to call stop() more than once.
+    The play/stop key is configurable (default F10).
+    Safe to call stop() more than once; call start(key_str) to restart with a new key.
     """
-    f10_pressed = pyqtSignal()
+    hotkey_triggered = pyqtSignal()
 
     def __init__(self):
         super().__init__()
         self._listener = None
 
-    def start(self):
+    def start(self, key_str: str = 'Key.f10'):
+        target = parse_pynput_key(key_str)
         obj = self
 
         def on_press(key):
             try:
-                if key == Key.f10:
-                    obj.f10_pressed.emit()
+                if key == target:
+                    obj.hotkey_triggered.emit()
             except Exception:
                 pass
 
@@ -725,6 +747,45 @@ class Downloader(QThread):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# AppSettings  (persistent JSON config stored next to the exe)
+# ─────────────────────────────────────────────────────────────────────────────
+class AppSettings:
+    """Load/save user preferences from phoenix_settings.json."""
+    _DEFAULTS = {
+        'hotkey_record_stop':  'Key.f9',
+        'hotkey_play_toggle':  'Key.f10',
+    }
+
+    def __init__(self):
+        self._data = dict(self._DEFAULTS)
+        self._load()
+
+    def _load(self):
+        try:
+            if SETTINGS_FILE.exists():
+                raw = json.loads(SETTINGS_FILE.read_text(encoding='utf-8'))
+                for k in self._DEFAULTS:
+                    if k in raw:
+                        self._data[k] = raw[k]
+        except Exception:
+            pass
+
+    def save(self):
+        try:
+            SETTINGS_FILE.write_text(
+                json.dumps(self._data, indent=2), encoding='utf-8')
+        except Exception:
+            pass
+
+    def get(self, key: str) -> str:
+        return self._data.get(key, self._DEFAULTS.get(key, ''))
+
+    def set(self, key: str, value: str):
+        if key in self._DEFAULTS:
+            self._data[key] = value
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Custom dark-themed dialog for naming a saved script
 # ─────────────────────────────────────────────────────────────────────────────
 class NameDialog(QDialog):
@@ -836,16 +897,481 @@ class ConfirmDialog(QDialog):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Action Editor  (view & delete individual events in a script)
+# ─────────────────────────────────────────────────────────────────────────────
+class ActionEditorDialog(QDialog):
+    """Shows all recorded events for a script; supports multi-select delete."""
+
+    def __init__(self, parent=None, filepath: str = ""):
+        super().__init__(parent)
+        self._filepath    = filepath
+        self._events: list = []
+        self._script_data: dict = {}
+
+        self.setWindowTitle("Edit Script")
+        self.setModal(True)
+        self.resize(660, 520)
+        self.setMinimumSize(520, 380)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setStyleSheet(f"""
+            QDialog  {{ background: #131313; border: 1px solid {BORDER}; }}
+            QLabel   {{ color: {TEXT}; font-size: 13px; background: transparent; }}
+            QListWidget {{
+                background: {SURF};
+                border: 1px solid {BORDER};
+                border-radius: 6px;
+                color: {TEXT};
+                font-size: 12px;
+                font-family: 'Courier New', Consolas, monospace;
+                selection-background-color: #2d1400;
+                outline: none;
+            }}
+            QListWidget::item {{
+                padding: 3px 10px;
+                border-radius: 3px;
+            }}
+            QListWidget::item:selected {{
+                background: #2d1400;
+                color: {FIRE3};
+                border-left: 3px solid {FIRE2};
+            }}
+            QScrollBar:vertical {{
+                background: {SURF}; width: 7px; border-radius: 3px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {BORDER}; border-radius: 3px; min-height: 20px;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+        """)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(18, 16, 18, 16)
+        lay.setSpacing(10)
+
+        # Title row
+        tr = QHBoxLayout()
+        self._title_lbl = QLabel("SCRIPT EDITOR")
+        self._title_lbl.setStyleSheet(
+            f"color: {FIRE3}; font-size: 14px; font-weight: bold;"
+            f" letter-spacing: 2px; background: transparent;")
+        tr.addWidget(self._title_lbl)
+        tr.addStretch()
+        self._count_lbl = QLabel("")
+        self._count_lbl.setStyleSheet(
+            f"color: {DIM}; font-size: 11px; background: transparent;")
+        tr.addWidget(self._count_lbl)
+        lay.addLayout(tr)
+
+        # Event list (multi-select)
+        self._list = QListWidget()
+        self._list.setSelectionMode(QListWidget.ExtendedSelection)
+        lay.addWidget(self._list)
+
+        # Bottom buttons
+        bot = QHBoxLayout()
+        bot.setSpacing(10)
+
+        self._btn_del_ev = QPushButton("✕  DELETE SELECTED")
+        self._btn_del_ev.setStyleSheet(BTN_DELETE)
+        self._btn_del_ev.setFixedHeight(34)
+        self._btn_del_ev.setCursor(Qt.PointingHandCursor)
+        self._btn_del_ev.setEnabled(False)
+        self._btn_del_ev.clicked.connect(self._on_delete_selected)
+        bot.addWidget(self._btn_del_ev)
+
+        bot.addStretch()
+
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.setStyleSheet(BTN_DELETE)
+        btn_cancel.setFixedHeight(34)
+        btn_cancel.setCursor(Qt.PointingHandCursor)
+        btn_cancel.clicked.connect(self.reject)
+        bot.addWidget(btn_cancel)
+
+        self._btn_save = QPushButton("Save Changes")
+        self._btn_save.setStyleSheet(BTN_DIALOG_OK)
+        self._btn_save.setFixedHeight(34)
+        self._btn_save.setCursor(Qt.PointingHandCursor)
+        self._btn_save.clicked.connect(self._on_save)
+        bot.addWidget(self._btn_save)
+
+        lay.addLayout(bot)
+
+        self._list.itemSelectionChanged.connect(
+            lambda: self._btn_del_ev.setEnabled(
+                bool(self._list.selectedItems())))
+
+        self._load_events()
+
+    # ── data ───────────────────────────────────────────────────────────────
+    def _load_events(self):
+        self._list.clear()
+        try:
+            with open(self._filepath, 'r', encoding='utf-8') as fh:
+                self._script_data = json.load(fh)
+            self._events = list(self._script_data.get('events', []))
+            name = self._script_data.get('name', Path(self._filepath).stem)
+            self._title_lbl.setText(f"EDIT:  {name}")
+        except Exception as exc:
+            self._events = []
+            self._title_lbl.setText(f"ERROR: {exc}")
+
+        self._rebuild_list()
+
+    def _rebuild_list(self):
+        self._list.clear()
+        for i, ev in enumerate(self._events):
+            item = QListWidgetItem(self._fmt(ev, i + 1))
+            item.setData(Qt.UserRole, i)
+            self._list.addItem(item)
+        self._update_count()
+
+    @staticmethod
+    def _fmt(ev: dict, idx: int) -> str:
+        t     = ev.get('t', 0.0)
+        etype = ev.get('type', '?')
+        if etype == 'move':
+            return (f"  #{idx:5d}   {t:8.3f}s"
+                    f"   MOVE           ({ev.get('x',0)}, {ev.get('y',0)})")
+        if etype == 'click':
+            b = ('RIGHT ' if 'right' in ev.get('btn', '')
+                 else 'MIDDLE' if 'middle' in ev.get('btn', '')
+                 else 'LEFT  ')
+            a = '↓' if ev.get('dn') else '↑'
+            return (f"  #{idx:5d}   {t:8.3f}s"
+                    f"   CLICK {b} {a}   ({ev.get('x',0)}, {ev.get('y',0)})")
+        if etype == 'scroll':
+            return (f"  #{idx:5d}   {t:8.3f}s"
+                    f"   SCROLL         ({ev.get('x',0)}, {ev.get('y',0)})"
+                    f"  dy={ev.get('dy',0)}")
+        if etype in ('kdn', 'kup'):
+            a = '↓' if etype == 'kdn' else '↑'
+            k = ev.get('k', '')
+            k_d = (k.replace('Key.', '').upper()
+                   if k.startswith('Key.') else (k.upper() if len(k) == 1 else k))
+            return f"  #{idx:5d}   {t:8.3f}s   KEY {a}  {k_d}"
+        return f"  #{idx:5d}   {t:8.3f}s   {etype}"
+
+    def _update_count(self):
+        total = len(self._events)
+        dur   = self._events[-1]['t'] if self._events else 0.0
+        self._count_lbl.setText(f"{total} events  ·  {dur:.1f}s")
+
+    # ── actions ────────────────────────────────────────────────────────────
+    def _on_delete_selected(self):
+        rows = sorted(
+            {self._list.row(it) for it in self._list.selectedItems()},
+            reverse=True)
+        for r in rows:
+            self._events.pop(r)
+        self._rebuild_list()
+        self._btn_del_ev.setEnabled(False)
+
+    def _on_save(self):
+        try:
+            self._script_data['events']      = self._events
+            self._script_data['event_count'] = len(self._events)
+            self._script_data['duration'] = (
+                round(self._events[-1]['t'], 3) if self._events else 0.0)
+            with open(self._filepath, 'w', encoding='utf-8') as fh:
+                json.dump(self._script_data, fh, separators=(',', ':'))
+            self.accept()
+        except Exception as exc:
+            self._count_lbl.setText(f"Save error: {exc}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Settings Dialog  (hotkeys + updates)
+# ─────────────────────────────────────────────────────────────────────────────
+class SettingsDialog(QDialog):
+    """Settings window with two sections: Hotkeys and Updates."""
+    settings_saved = pyqtSignal()
+    install_update = pyqtSignal(str, str)   # (version, url)
+
+    def __init__(self, parent=None, settings: 'AppSettings' = None,
+                 update_info: tuple = None):
+        super().__init__(parent)
+        self._settings       = settings
+        self._update_info    = update_info
+        self._pending        = {
+            'record_stop': settings.get('hotkey_record_stop') if settings else 'Key.f9',
+            'play_toggle': settings.get('hotkey_play_toggle') if settings else 'Key.f10',
+        }
+        self._capture_target   = None
+        self._capture_listener = None
+        self._upd_checker      = None
+
+        self.setWindowTitle("Settings")
+        self.setModal(True)
+        self.setFixedSize(480, 400)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setStyleSheet(f"""
+            QDialog {{ background: #131313; border: 1px solid {BORDER}; }}
+            QLabel  {{ color: {TEXT}; font-size: 13px; background: transparent; }}
+            QFrame  {{ background: {SURF}; border: 1px solid {BORDER}; border-radius: 8px; }}
+        """)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(22, 18, 22, 18)
+        lay.setSpacing(14)
+
+        # ── Title ──────────────────────────────────────────────────────────
+        ttl = QLabel("⚙  SETTINGS")
+        ttl.setStyleSheet(
+            f"color: {FIRE3}; font-size: 15px; font-weight: bold;"
+            f" letter-spacing: 3px; background: transparent;")
+        lay.addWidget(ttl)
+
+        # ── Hotkeys section ────────────────────────────────────────────────
+        lay.addWidget(self._section_lbl("HOTKEYS"))
+        hk = QFrame()
+        hk.setStyleSheet(
+            f"QFrame {{ background: {SURF}; border: 1px solid {BORDER};"
+            f" border-radius: 8px; }}"
+            f"QLabel {{ background: transparent; color: {TEXT};"
+            f" font-size: 12px; border: none; }}")
+        hk_lay = QVBoxLayout(hk)
+        hk_lay.setContentsMargins(16, 12, 16, 12)
+        hk_lay.setSpacing(10)
+
+        r1 = QHBoxLayout()
+        r1.addWidget(QLabel("Stop recording:"))
+        r1.addStretch()
+        self._btn_rec_key = self._hotkey_btn(
+            self._pending['record_stop'], 'record_stop')
+        r1.addWidget(self._btn_rec_key)
+        hk_lay.addLayout(r1)
+
+        r2 = QHBoxLayout()
+        r2.addWidget(QLabel("Start / stop playback:"))
+        r2.addStretch()
+        self._btn_play_key = self._hotkey_btn(
+            self._pending['play_toggle'], 'play_toggle')
+        r2.addWidget(self._btn_play_key)
+        hk_lay.addLayout(r2)
+
+        hint = QLabel("Click a key button, then press any keyboard key to rebind.")
+        hint.setStyleSheet(
+            f"color: {DIM}; font-size: 10px; letter-spacing: 1px;"
+            f" background: transparent; border: none;")
+        hk_lay.addWidget(hint)
+        lay.addWidget(hk)
+
+        # ── Updates section ────────────────────────────────────────────────
+        lay.addWidget(self._section_lbl("UPDATES"))
+        upd = QFrame()
+        upd.setStyleSheet(
+            f"QFrame {{ background: {SURF}; border: 1px solid {BORDER};"
+            f" border-radius: 8px; }}"
+            f"QLabel {{ background: transparent; color: {TEXT};"
+            f" font-size: 12px; border: none; }}")
+        upd_lay = QVBoxLayout(upd)
+        upd_lay.setContentsMargins(16, 12, 16, 12)
+        upd_lay.setSpacing(8)
+
+        ver_row = QHBoxLayout()
+        ver_row.addWidget(QLabel("Current version:"))
+        ver_row.addStretch()
+        vl = QLabel(f"v{VERSION}")
+        vl.setStyleSheet(
+            f"color: {FIRE3}; font-size: 12px; background: transparent; border: none;")
+        ver_row.addWidget(vl)
+        upd_lay.addLayout(ver_row)
+
+        chk_row = QHBoxLayout()
+        self._upd_status = QLabel("—")
+        self._upd_status.setStyleSheet(
+            f"color: {DIM}; font-size: 11px; background: transparent; border: none;")
+        chk_row.addWidget(self._upd_status)
+        chk_row.addStretch()
+        self._btn_check = QPushButton("Check for Updates")
+        self._btn_check.setStyleSheet(BTN_UPDATE)
+        self._btn_check.setFixedHeight(30)
+        self._btn_check.setCursor(Qt.PointingHandCursor)
+        self._btn_check.clicked.connect(self._on_check_updates)
+        chk_row.addWidget(self._btn_check)
+        upd_lay.addLayout(chk_row)
+
+        # Install row — visible only when update is found
+        self._inst_widget = QWidget()
+        self._inst_widget.setStyleSheet("background: transparent;")
+        inst_row = QHBoxLayout(self._inst_widget)
+        inst_row.setContentsMargins(0, 0, 0, 0)
+        self._new_ver_lbl = QLabel("")
+        self._new_ver_lbl.setStyleSheet(
+            f"color: {FIRE2}; font-size: 12px; background: transparent;")
+        inst_row.addWidget(self._new_ver_lbl)
+        inst_row.addStretch()
+        self._btn_install = QPushButton("↑  Install Update")
+        self._btn_install.setStyleSheet(BTN_DIALOG_OK)
+        self._btn_install.setFixedHeight(30)
+        self._btn_install.setCursor(Qt.PointingHandCursor)
+        self._btn_install.clicked.connect(self._on_install)
+        inst_row.addWidget(self._btn_install)
+        self._inst_widget.setVisible(False)
+        upd_lay.addWidget(self._inst_widget)
+
+        lay.addWidget(upd)
+        lay.addStretch()
+
+        # ── Bottom buttons ─────────────────────────────────────────────────
+        bot = QHBoxLayout()
+        bot.setSpacing(10)
+        bot.addStretch()
+
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.setStyleSheet(BTN_DELETE)
+        btn_cancel.setFixedHeight(36)
+        btn_cancel.setCursor(Qt.PointingHandCursor)
+        btn_cancel.clicked.connect(self._on_cancel)
+        bot.addWidget(btn_cancel)
+
+        btn_apply = QPushButton("Apply")
+        btn_apply.setStyleSheet(BTN_DIALOG_OK)
+        btn_apply.setFixedHeight(36)
+        btn_apply.setCursor(Qt.PointingHandCursor)
+        btn_apply.clicked.connect(self._on_apply)
+        bot.addWidget(btn_apply)
+
+        lay.addLayout(bot)
+
+        # Show known update immediately if parent already found one
+        if update_info:
+            self._show_update(update_info[0], update_info[1])
+
+    # ── helpers ────────────────────────────────────────────────────────────
+    def _section_lbl(self, text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            f"color: {FIRE2}; font-size: 10px; font-weight: bold;"
+            f" letter-spacing: 3px; background: transparent;")
+        return lbl
+
+    def _hotkey_btn(self, key_str: str, target_id: str) -> QPushButton:
+        btn = QPushButton(key_to_display(key_str))
+        btn.setStyleSheet(BTN_LOOP_INACTIVE)
+        btn.setFixedSize(88, 28)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setProperty("tid", target_id)
+        btn.clicked.connect(lambda: self._start_capture(target_id, btn))
+        return btn
+
+    # ── hotkey capture ─────────────────────────────────────────────────────
+    def _start_capture(self, target_id: str, btn: QPushButton):
+        if self._capture_listener:
+            return
+        self._capture_target = target_id
+        btn.setText("Press a key…")
+        btn.setStyleSheet(BTN_LOOP_ACTIVE)
+
+        dlg = self
+
+        def on_press(key):
+            try:
+                if hasattr(key, 'char') and key.char and len(key.char) == 1:
+                    ks = key.char
+                else:
+                    ks = str(key)
+            except Exception:
+                ks = str(key)
+            QTimer.singleShot(0, lambda: dlg._apply_capture(ks, btn))
+            return False  # stop listener after first key
+
+        if HAS_PYNPUT:
+            self._capture_listener = pk.Listener(on_press=on_press)
+            self._capture_listener.daemon = True
+            self._capture_listener.start()
+        else:
+            btn.setText(key_to_display(self._pending.get(target_id, '')))
+            btn.setStyleSheet(BTN_LOOP_INACTIVE)
+
+    def _apply_capture(self, key_str: str, btn: QPushButton):
+        if self._capture_listener:
+            try:
+                self._capture_listener.stop()
+            except Exception:
+                pass
+            self._capture_listener = None
+        self._pending[self._capture_target] = key_str
+        self._capture_target = None
+        btn.setText(key_to_display(key_str))
+        btn.setStyleSheet(BTN_LOOP_INACTIVE)
+
+    # ── update check ───────────────────────────────────────────────────────
+    def _on_check_updates(self):
+        self._btn_check.setEnabled(False)
+        self._btn_check.setText("Checking…")
+        self._upd_status.setText("Checking for updates…")
+        self._inst_widget.setVisible(False)
+
+        self._upd_checker = UpdateChecker()
+        self._upd_checker.update_available.connect(self._on_update_found)
+        self._upd_checker.finished.connect(self._on_check_done)
+        self._upd_checker.start()
+
+    def _on_check_done(self):
+        self._btn_check.setEnabled(True)
+        self._btn_check.setText("Check for Updates")
+        if not self._inst_widget.isVisible():
+            self._upd_status.setText("Up to date  ✓")
+
+    def _on_update_found(self, version: str, url: str):
+        self._show_update(version, url)
+
+    def _show_update(self, version: str, url: str):
+        self._upd_status.setText("")
+        self._new_ver_lbl.setText(f"v{version} available")
+        self._btn_install.setProperty("_url",     url)
+        self._btn_install.setProperty("_version", version)
+        self._inst_widget.setVisible(True)
+
+    def _on_install(self):
+        url     = self._btn_install.property("_url")
+        version = self._btn_install.property("_version")
+        if url:
+            self.install_update.emit(version, url)
+            self.accept()
+
+    # ── apply / cancel ─────────────────────────────────────────────────────
+    def _on_apply(self):
+        self._stop_capture_if_active()
+        if self._settings:
+            self._settings.set('hotkey_record_stop', self._pending['record_stop'])
+            self._settings.set('hotkey_play_toggle', self._pending['play_toggle'])
+            self._settings.save()
+        self.settings_saved.emit()
+        self.accept()
+
+    def _on_cancel(self):
+        self._stop_capture_if_active()
+        self.reject()
+
+    def _stop_capture_if_active(self):
+        if self._capture_listener:
+            try:
+                self._capture_listener.stop()
+            except Exception:
+                pass
+            self._capture_listener = None
+
+    def closeEvent(self, event):
+        self._stop_capture_if_active()
+        event.accept()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main Window
 # ─────────────────────────────────────────────────────────────────────────────
 class PhoenixMacro(QMainWindow):
     def __init__(self):
         super().__init__()
+        self._settings  = AppSettings()
         self._recorder  = Recorder() if HAS_PYNPUT else None
         self._player: Player | None = None
         self._recording = False
         self._playing   = False
         self._tick_t0   = 0.0
+        self._update_info: tuple | None = None   # (version, url) when update found
 
         # Loop / repeat state
         self._loop_count        = 1    # how many times to run (0 = infinite)
@@ -871,10 +1397,11 @@ class PhoenixMacro(QMainWindow):
         self._blink_on = True
 
         if HAS_PYNPUT:
+            self._recorder._stop_key_str = self._settings.get('hotkey_record_stop')
             self._recorder.hotkey_stop.connect(self._stop_recording)
             self._hotkeys = GlobalHotkeys()
-            self._hotkeys.f10_pressed.connect(self._on_f10)
-            self._hotkeys.start()
+            self._hotkeys.hotkey_triggered.connect(self._on_f10)
+            self._hotkeys.start(self._settings.get('hotkey_play_toggle'))
         else:
             self._hotkeys = None
 
@@ -882,7 +1409,6 @@ class PhoenixMacro(QMainWindow):
         self._refresh_scripts()
 
         # Check for updates in the background — does not block startup
-        self._update_url  = ""
         self._downloader: Downloader | None = None
         self._upd_checker = UpdateChecker()
         self._upd_checker.update_available.connect(self._on_update_available)
@@ -925,11 +1451,15 @@ class PhoenixMacro(QMainWindow):
         self._btn_create.clicked.connect(self._on_create)
         cl.addWidget(self._btn_create)
 
-        # Hint below Create button
-        hint = QLabel("F9 — stop recording   ·   F10 — start / stop script")
-        hint.setAlignment(Qt.AlignCenter)
-        hint.setStyleSheet(f"color: {DIM}; font-size: 10px; letter-spacing: 1px; padding: 0;")
-        cl.addWidget(hint)
+        # Hint below Create button (text updated when hotkeys are changed)
+        stop_key = key_to_display(self._settings.get('hotkey_record_stop'))
+        play_key = key_to_display(self._settings.get('hotkey_play_toggle'))
+        self._hint_lbl = QLabel(
+            f"{stop_key} — stop recording   ·   {play_key} — start / stop script")
+        self._hint_lbl.setAlignment(Qt.AlignCenter)
+        self._hint_lbl.setStyleSheet(
+            f"color: {DIM}; font-size: 10px; letter-spacing: 1px; padding: 0;")
+        cl.addWidget(self._hint_lbl)
 
         # Divider
         cl.addWidget(self._divider("SAVED SCRIPTS"))
@@ -959,7 +1489,7 @@ class PhoenixMacro(QMainWindow):
         self._btn_start.clicked.connect(self._on_start)
         cl.addWidget(self._btn_start)
 
-        # Bottom row: delete + update (hidden until available) + progress
+        # Bottom row: delete + edit + progress
         bot = QHBoxLayout()
         bot.setSpacing(12)
 
@@ -971,13 +1501,13 @@ class PhoenixMacro(QMainWindow):
         self._btn_del.clicked.connect(self._on_delete)
         bot.addWidget(self._btn_del)
 
-        self._btn_update = QPushButton("↑  UPDATE")
-        self._btn_update.setStyleSheet(BTN_UPDATE)
-        self._btn_update.setMinimumHeight(36)
-        self._btn_update.setCursor(Qt.PointingHandCursor)
-        self._btn_update.setVisible(False)
-        self._btn_update.clicked.connect(self._on_update_click)
-        bot.addWidget(self._btn_update)
+        self._btn_edit = QPushButton("✎  EDIT SCRIPT")
+        self._btn_edit.setStyleSheet(BTN_DELETE)
+        self._btn_edit.setMinimumHeight(36)
+        self._btn_edit.setCursor(Qt.PointingHandCursor)
+        self._btn_edit.setEnabled(False)
+        self._btn_edit.clicked.connect(self._on_edit_script)
+        bot.addWidget(self._btn_edit)
 
         bot.addStretch()
 
@@ -1114,9 +1644,29 @@ class PhoenixMacro(QMainWindow):
         top.addLayout(title_col)
         top.addStretch()
 
-        rflame = QLabel("🔥")
-        rflame.setStyleSheet("font-size: 30px; background: transparent;")
-        top.addWidget(rflame)
+        self._btn_settings = QPushButton("⚙")
+        self._btn_settings.setToolTip("Settings")
+        self._btn_settings.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {DIM};
+                border: 1px solid {BORDER};
+                border-radius: 7px;
+                font-size: 18px;
+                padding: 2px 10px;
+            }}
+            QPushButton:hover {{
+                color: {FIRE3};
+                border-color: {FIRE2};
+                background: #1a0d00;
+            }}
+            QPushButton:pressed {{
+                background: #2d1800;
+            }}
+        """)
+        self._btn_settings.setCursor(Qt.PointingHandCursor)
+        self._btn_settings.clicked.connect(self._open_settings)
+        top.addWidget(self._btn_settings)
 
         layout.addLayout(top)
 
@@ -1303,6 +1853,7 @@ class PhoenixMacro(QMainWindow):
         active = self._recording or self._playing or self._countdown_val > 0
         self._btn_start.setEnabled(sel and not active)
         self._btn_del.setEnabled(sel and not active)
+        self._btn_edit.setEnabled(sel and not active)
 
         if sel:
             meta = self._list.selectedItems()[0].data(Qt.UserRole + 1)
@@ -1338,6 +1889,7 @@ class PhoenixMacro(QMainWindow):
         self._btn_create.setStyleSheet(BTN_CREATE_REC)
         self._btn_start.setEnabled(False)
         self._btn_del.setEnabled(False)
+        self._btn_edit.setEnabled(False)
         self._loop_panel.setEnabled(False)
         self._status_lbl.setText("RECORDING")
         self._status_lbl.setStyleSheet(
@@ -1546,38 +2098,97 @@ class PhoenixMacro(QMainWindow):
 
     # ── Update ─────────────────────────────────────────────────────────────
     def _on_update_available(self, version: str, url: str):
-        """Called from UpdateChecker when a newer release exists on GitHub."""
-        self._update_url = url
-        self._btn_update.setText(f"↑  UPDATE  v{version}")
-        self._btn_update.setVisible(True)
+        """Called from UpdateChecker (auto, background) when newer release exists."""
+        self._update_info = (version, url)
+        # Show badge on settings button so user knows to open Settings
+        self._btn_settings.setText("⚙ ●")
+        self._btn_settings.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {FIRE2};
+                border: 1px solid {FIRE2};
+                border-radius: 7px;
+                font-size: 16px;
+                padding: 2px 10px;
+            }}
+            QPushButton:hover {{
+                color: {FIRE3};
+                border-color: {FIRE3};
+                background: #1a0d00;
+            }}
+            QPushButton:pressed {{ background: #2d1800; }}
+        """)
 
-    def _on_update_click(self):
-        if not self._update_url:
-            return
+    def _start_update(self, version: str, url: str):
+        """Begin downloading the update (triggered from SettingsDialog)."""
         if self._downloader and self._downloader.isRunning():
-            return   # already in progress
-
+            return
         dest = str(BASE_DIR / "PhoenixMacro_update.exe")
-        self._downloader = Downloader(self._update_url, dest)
+        self._downloader = Downloader(url, dest)
         self._downloader.progress.connect(self._on_dl_progress)
         self._downloader.done.connect(self._on_dl_done)
         self._downloader.error.connect(self._on_dl_error)
         self._downloader.start()
-
-        self._btn_update.setText("Downloading…  0%")
-        self._btn_update.setEnabled(False)
+        self._prog_lbl.setText(f"Downloading v{version}  0%")
 
     def _on_dl_progress(self, pct: int):
-        self._btn_update.setText(f"Downloading…  {pct}%")
+        # Replace the version prefix if present, otherwise generic label
+        cur = self._prog_lbl.text()
+        prefix = cur.rsplit("  ", 1)[0] if "  " in cur else "Downloading"
+        self._prog_lbl.setText(f"{prefix}  {pct}%")
 
     def _on_dl_done(self, path: str):
-        self._btn_update.setText("↑  Applying…")
+        self._prog_lbl.setText("Applying update…")
         self._apply_update(path)
 
     def _on_dl_error(self, msg: str):
-        self._btn_update.setText(f"↑  UPDATE  (retry)")
-        self._btn_update.setEnabled(True)
+        self._prog_lbl.setText("")
         self._show_error(f"Download failed:\n{msg}")
+
+    # ── Settings & Editor ──────────────────────────────────────────────────
+    def _open_settings(self):
+        """Open Settings dialog; pause global hotkeys while it's open."""
+        if self._hotkeys:
+            self._hotkeys.stop()
+
+        dlg = SettingsDialog(self, self._settings, self._update_info)
+        dlg.settings_saved.connect(self._on_settings_saved)
+        dlg.install_update.connect(self._start_update)
+        dlg.exec_()
+
+        # Restart hotkeys with (possibly updated) key binding
+        if self._hotkeys and HAS_PYNPUT:
+            self._hotkeys.start(self._settings.get('hotkey_play_toggle'))
+
+    def _on_settings_saved(self):
+        """Apply new hotkey settings to Recorder and GlobalHotkeys."""
+        stop_key = self._settings.get('hotkey_record_stop')
+        play_key = self._settings.get('hotkey_play_toggle')
+        if self._recorder:
+            self._recorder._stop_key_str = stop_key
+        # Hint label
+        self._hint_lbl.setText(
+            f"{key_to_display(stop_key)} — stop recording   ·   "
+            f"{key_to_display(play_key)} — start / stop script")
+
+    def _on_edit_script(self):
+        """Open Action Editor for the currently selected script."""
+        sel = self._list.selectedItems()
+        if not sel:
+            return
+        fp = sel[0].data(Qt.UserRole)
+        if not fp or not Path(fp).exists():
+            self._show_error("Script file not found.")
+            self._refresh_scripts()
+            return
+        dlg = ActionEditorDialog(self, fp)
+        if dlg.exec_() == QDialog.Accepted:
+            self._refresh_scripts()
+            # Re-select the same script after refresh
+            for i in range(self._list.count()):
+                if self._list.item(i).data(Qt.UserRole) == fp:
+                    self._list.setCurrentRow(i)
+                    break
 
     def _apply_update(self, new_exe: str):
         """Replace this exe after the process exits using a helper .bat script."""
