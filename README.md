@@ -112,6 +112,10 @@ pyinstaller --onefile --windowed --name PhoenixMacro --icon phoenix.ico --add-da
 
 ## Changelog
 
+### v1.5.1
+- Fixed auto-update: downloader now uses the certifi CA bundle so SSL connections to GitHub CDN succeed inside the exe
+- Added PE signature + size validation after download — corrupted or blocked files are rejected with a clear error instead of crashing on launch
+
 ### v1.5.0
 - **Script search** — filter bar above the script list; type to instantly narrow results
 - **Rename scripts** — double-click any script name to rename it (updates the JSON file and filename)

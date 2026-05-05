@@ -47,7 +47,7 @@ SETTINGS_FILE = BASE_DIR / "phoenix_settings.json"
 SCRIPTS_DIR.mkdir(exist_ok=True)
 
 # ── Version & Update ──────────────────────────────────────────────────────────
-VERSION     = "1.5.0"                        # bump this with each release tag
+VERSION     = "1.5.1"                        # bump this with each release tag
 GITHUB_REPO = "PhoenixAnalist/phoenix-macro"
 
 # subprocess.CREATE_NO_WINDOW is Windows-only
@@ -714,7 +714,12 @@ class Downloader(QThread):
             import urllib.request
             import ssl as _ssl
 
-            ctx = _ssl.create_default_context()
+            try:
+                import certifi
+                ctx = _ssl.create_default_context(cafile=certifi.where())
+            except ImportError:
+                ctx = _ssl.create_default_context()
+
             req = urllib.request.Request(
                 self.url,
                 headers={"User-Agent": "PhoenixMacro-Updater/1.0"},
@@ -737,6 +742,20 @@ class Downloader(QThread):
                     Path(self.dest).unlink(missing_ok=True)
                 except Exception:
                     pass
+                return
+
+            # Validate: must be a Windows PE (starts with "MZ") and at least 1 MB
+            dest_path = Path(self.dest)
+            file_size = dest_path.stat().st_size
+            with open(self.dest, "rb") as fh:
+                magic = fh.read(2)
+            if magic != b"MZ" or file_size < 1_000_000:
+                dest_path.unlink(missing_ok=True)
+                self.error.emit(
+                    f"Downloaded file is invalid (size={file_size}, magic={magic!r}).\n"
+                    "The file may have been blocked by antivirus or the download was corrupted.\n"
+                    "Please download the update manually from GitHub."
+                )
                 return
 
             self.progress.emit(100)
@@ -2275,7 +2294,7 @@ class PhoenixMacro(QMainWindow):
         bat_path = str(BASE_DIR / "_phoenix_update.bat")
         bat = (
             "@echo off\n"
-            "timeout /t 2 /nobreak >nul\n"
+            "timeout /t 4 /nobreak >nul\n"
             f"move /y \"{new_exe}\" \"{current_exe}\"\n"
             f"start \"\" \"{current_exe}\"\n"
             "del \"%~f0\"\n"
