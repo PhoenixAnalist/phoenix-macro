@@ -58,7 +58,7 @@ if getattr(sys, 'frozen', False):
                 pass
 
 # ── Version & Update ──────────────────────────────────────────────────────────
-VERSION     = "1.6.1"
+VERSION     = "1.6.2"
 GITHUB_REPO = "PhoenixAnalist/phoenix-macro"
 
 _NO_WIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -1206,7 +1206,7 @@ class SettingsDialog(QDialog):
 
         self.setWindowTitle("Settings")
         self.setModal(True)
-        self.setFixedSize(500, 480)
+        self.setFixedSize(620, 530)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self.setStyleSheet(f"""
             QDialog {{ background: {_c('SURF')}; border: 1px solid {_c('BORDER')}; }}
@@ -1243,7 +1243,7 @@ class SettingsDialog(QDialog):
         for name, icons in [('Phoenix Fire', '🔥'), ('Midnight Ocean', '🌊'), ('Neon Storm', '⚡')]:
             btn = QPushButton(f"{icons}  {name}")
             btn.setCursor(Qt.PointingHandCursor)
-            btn.setFixedHeight(34)
+            btn.setFixedHeight(38)
             btn.clicked.connect(lambda _, n=name: self._select_theme(n))
             self._theme_btns[name] = btn
             theme_row.addWidget(btn)
@@ -1322,7 +1322,8 @@ class SettingsDialog(QDialog):
         chk_row.addStretch()
         self._btn_check = QPushButton("Check for Updates")
         self._btn_check.setStyleSheet(_btn_update())
-        self._btn_check.setFixedHeight(30)
+        self._btn_check.setFixedHeight(32)
+        self._btn_check.setMinimumWidth(160)
         self._btn_check.setCursor(Qt.PointingHandCursor)
         self._btn_check.clicked.connect(self._on_check_updates)
         chk_row.addWidget(self._btn_check)
@@ -1339,7 +1340,8 @@ class SettingsDialog(QDialog):
         inst_row.addStretch()
         self._btn_install = QPushButton("↑  Install Update")
         self._btn_install.setStyleSheet(_btn_dialog_ok())
-        self._btn_install.setFixedHeight(30)
+        self._btn_install.setFixedHeight(32)
+        self._btn_install.setMinimumWidth(160)
         self._btn_install.setCursor(Qt.PointingHandCursor)
         self._btn_install.clicked.connect(self._on_install)
         inst_row.addWidget(self._btn_install)
