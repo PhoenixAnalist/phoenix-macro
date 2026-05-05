@@ -6,6 +6,7 @@ Usage: python phoenix_macro.py
 Build: see build.bat (Windows)
 """
 import sys
+import os
 import json
 import time
 import threading
@@ -35,9 +36,11 @@ except ImportError:
 
 # ── Paths (works both from source and from PyInstaller --onefile bundle) ──────
 if getattr(sys, 'frozen', False):
-    BASE_DIR = Path(sys.executable).parent
+    BASE_DIR   = Path(sys.executable).parent
+    BUNDLE_DIR = Path(getattr(sys, '_MEIPASS', BASE_DIR))  # extracted --add-data files
 else:
-    BASE_DIR = Path(__file__).parent
+    BASE_DIR   = Path(__file__).parent
+    BUNDLE_DIR = BASE_DIR
 
 SCRIPTS_DIR = BASE_DIR / "scripts"
 SCRIPTS_DIR.mkdir(exist_ok=True)
@@ -1211,6 +1214,10 @@ class PhoenixMacro(QMainWindow):
     # ── Icon ───────────────────────────────────────────────────────────────
     @staticmethod
     def _make_icon() -> QIcon:
+        ico_path = str(BUNDLE_DIR / "phoenix.ico")
+        if os.path.isfile(ico_path):
+            return QIcon(ico_path)
+        # Fallback: painted flame shape (no ico file present)
         px = QPixmap(64, 64)
         px.fill(Qt.transparent)
         p = QPainter(px)

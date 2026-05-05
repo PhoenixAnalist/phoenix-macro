@@ -30,6 +30,8 @@ pyinstaller ^
     --onefile ^
     --windowed ^
     --name "PhoenixMacro" ^
+    --icon "phoenix.ico" ^
+    --add-data "phoenix.ico;." ^
     --add-data "scripts;scripts" ^
     phoenix_macro.py
 

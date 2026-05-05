@@ -33,6 +33,8 @@ jobs:
           --onefile
           --windowed
           --name PhoenixMacro
+          --icon phoenix.ico
+          --add-data "phoenix.ico;."
           phoenix_macro.py
 
       - name: Upload artifact
