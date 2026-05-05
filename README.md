@@ -112,6 +112,10 @@ pyinstaller --onefile --windowed --name PhoenixMacro --icon phoenix.ico --add-da
 
 ## Changelog
 
+### v1.5.2
+- Fixed "Failed to load Python DLL" error on auto-update: PyInstaller now extracts to the app folder (`--runtime-tmpdir .`) instead of `%TEMP%`, which Windows Defender monitors aggressively and may delete `python311.dll` right after extraction
+- On startup, leftover `_MEI*` extraction folders from crashed previous runs are cleaned up automatically
+
 ### v1.5.1
 - Fixed auto-update: downloader now uses the certifi CA bundle so SSL connections to GitHub CDN succeed inside the exe
 - Added PE signature + size validation after download — corrupted or blocked files are rejected with a clear error instead of crashing on launch

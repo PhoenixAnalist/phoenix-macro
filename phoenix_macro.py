@@ -46,8 +46,21 @@ SCRIPTS_DIR   = BASE_DIR / "scripts"
 SETTINGS_FILE = BASE_DIR / "phoenix_settings.json"
 SCRIPTS_DIR.mkdir(exist_ok=True)
 
+# Clean up leftover _MEI* extraction folders from previous runs.
+# With --runtime-tmpdir . the bootloader extracts next to the exe; old dirs
+# are normally removed on exit but may linger after a crash or forced kill.
+if getattr(sys, 'frozen', False):
+    import shutil
+    _current_mei = str(getattr(sys, '_MEIPASS', ''))
+    for _p in BASE_DIR.glob('_MEI*'):
+        if _p.is_dir() and str(_p) != _current_mei:
+            try:
+                shutil.rmtree(_p, ignore_errors=True)
+            except Exception:
+                pass
+
 # ── Version & Update ──────────────────────────────────────────────────────────
-VERSION     = "1.5.1"                        # bump this with each release tag
+VERSION     = "1.5.2"                        # bump this with each release tag
 GITHUB_REPO = "PhoenixAnalist/phoenix-macro"
 
 # subprocess.CREATE_NO_WINDOW is Windows-only

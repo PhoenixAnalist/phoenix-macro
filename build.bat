@@ -33,6 +33,7 @@ pyinstaller ^
     --icon "phoenix.ico" ^
     --add-data "phoenix.ico;." ^
     --add-data "scripts;scripts" ^
+    --runtime-tmpdir . ^
     phoenix_macro.py
 
 if %ERRORLEVEL% NEQ 0 (

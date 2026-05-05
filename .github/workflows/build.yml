@@ -35,6 +35,7 @@ jobs:
           --name PhoenixMacro
           --icon phoenix.ico
           --add-data "phoenix.ico;."
+          --runtime-tmpdir .
           phoenix_macro.py
 
       - name: Upload artifact
