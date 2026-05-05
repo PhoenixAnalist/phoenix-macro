@@ -25,7 +25,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install PyQt5 pynput pyinstaller
+        run: pip install PyQt5 pynput pyinstaller certifi
 
       - name: Build PhoenixMacro.exe
         run: >

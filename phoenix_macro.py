@@ -43,7 +43,7 @@ SCRIPTS_DIR = BASE_DIR / "scripts"
 SCRIPTS_DIR.mkdir(exist_ok=True)
 
 # ── Version & Update ──────────────────────────────────────────────────────────
-VERSION     = "1.3.0"                        # bump this with each release tag
+VERSION     = "1.3.1"                        # bump this with each release tag
 GITHUB_REPO = "PhoenixAnalist/phoenix-macro"
 
 # subprocess.CREATE_NO_WINDOW is Windows-only
@@ -615,7 +615,14 @@ class UpdateChecker(QThread):
             import urllib.request
             import ssl as _ssl
 
-            ctx = _ssl.create_default_context()
+            # certifi provides a reliable CA bundle inside PyInstaller exes;
+            # fall back to the system store if certifi isn't bundled.
+            try:
+                import certifi
+                ctx = _ssl.create_default_context(cafile=certifi.where())
+            except ImportError:
+                ctx = _ssl.create_default_context()
+
             req = urllib.request.Request(
                 f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
                 headers={"User-Agent": "PhoenixMacro-Updater/1.0"},
@@ -638,16 +645,25 @@ class UpdateChecker(QThread):
                 return
 
             def _ver(s):
+                if not s:
+                    return None
                 try:
                     return tuple(int(x) for x in s.split("."))
                 except Exception:
-                    return (0,)
+                    return None
 
-            if _ver(tag) > _ver(VERSION):
+            lv, rv = _ver(VERSION), _ver(tag)
+            if lv is not None and rv is not None and rv > lv:
                 self.update_available.emit(tag, url)
 
         except Exception:
-            pass   # silently ignore any network / parse errors
+            # Write a one-line log so the user can diagnose network issues
+            try:
+                import traceback
+                log = BASE_DIR / "phoenix_update.log"
+                log.write_text(traceback.format_exc(), encoding="utf-8")
+            except Exception:
+                pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
