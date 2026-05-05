@@ -43,7 +43,7 @@ SCRIPTS_DIR = BASE_DIR / "scripts"
 SCRIPTS_DIR.mkdir(exist_ok=True)
 
 # ── Version & Update ──────────────────────────────────────────────────────────
-VERSION     = "1.2.0"                        # bump this with each release tag
+VERSION     = "1.3.0"                        # bump this with each release tag
 GITHUB_REPO = "PhoenixAnalist/phoenix-macro"
 
 # subprocess.CREATE_NO_WINDOW is Windows-only
@@ -193,7 +193,7 @@ QPushButton:disabled {{
 }}
 """
 
-# Compact variant for dialog buttons (smaller padding, fits in 36px height)
+# Compact variant for dialog buttons
 BTN_DIALOG_OK = f"""
 QPushButton {{
     background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
@@ -214,6 +214,51 @@ QPushButton:hover {{
 QPushButton:pressed {{
     background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
         stop:0 #cc2000, stop:1 #991800);
+}}
+"""
+
+# Small toggle buttons for the loop/delay panel
+BTN_LOOP_INACTIVE = f"""
+QPushButton {{
+    background: #1a1a1a;
+    color: {DIM};
+    border: 1px solid #2d2d2d;
+    border-radius: 5px;
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    min-width: 28px;
+}}
+QPushButton:hover {{
+    background: #252525;
+    color: {TEXT};
+    border-color: {BORDER};
+}}
+QPushButton:disabled {{
+    color: #2a2a2a;
+    border-color: #1a1a1a;
+    background: #131313;
+}}
+"""
+
+BTN_LOOP_ACTIVE = f"""
+QPushButton {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 #3d2000, stop:1 #251200);
+    color: {FIRE3};
+    border: 1px solid {FIRE2};
+    border-radius: 5px;
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    min-width: 28px;
+}}
+QPushButton:disabled {{
+    color: {DIM};
+    border-color: {BORDER};
+    background: #1e1000;
 }}
 """
 
@@ -518,6 +563,43 @@ class Player(QThread):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GlobalHotkeys  (persistent background listener for F10 start/stop)
+# ─────────────────────────────────────────────────────────────────────────────
+class GlobalHotkeys(QObject):
+    """Runs a permanent pynput keyboard listener that emits Qt signals.
+    F10 toggles script playback from any window without Alt-Tab.
+    Safe to call stop() more than once.
+    """
+    f10_pressed = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self._listener = None
+
+    def start(self):
+        obj = self
+
+        def on_press(key):
+            try:
+                if key == Key.f10:
+                    obj.f10_pressed.emit()
+            except Exception:
+                pass
+
+        self._listener = pk.Listener(on_press=on_press)
+        self._listener.daemon = True
+        self._listener.start()
+
+    def stop(self):
+        if self._listener:
+            try:
+                self._listener.stop()
+            except Exception:
+                pass
+            self._listener = None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # UpdateChecker  (runs once at startup, silently)
 # ─────────────────────────────────────────────────────────────────────────────
 class UpdateChecker(QThread):
@@ -746,7 +828,21 @@ class PhoenixMacro(QMainWindow):
         self._playing   = False
         self._tick_t0   = 0.0
 
-        # Single 200 ms tick drives both recording timer and playback timer
+        # Loop / repeat state
+        self._loop_count        = 1    # how many times to run (0 = infinite)
+        self._loop_current      = 0    # iterations completed so far
+        self._start_delay_s     = 3    # countdown seconds before first play
+        self._loop_delay_s      = 0    # pause seconds between loops
+        self._loop_aborted      = False
+        self._current_script    = ""
+
+        # Countdown timer (1-second ticks for the start/loop-gap delay)
+        self._countdown_val   = 0
+        self._countdown_timer = QTimer(self)
+        self._countdown_timer.setInterval(1000)
+        self._countdown_timer.timeout.connect(self._countdown_tick)
+
+        # Single 200 ms tick drives recording timer and playback timer
         self._ticker = QTimer(self)
         self._ticker.timeout.connect(self._tick)
 
@@ -756,8 +852,12 @@ class PhoenixMacro(QMainWindow):
         self._blink_on = True
 
         if HAS_PYNPUT:
-            # Connect global F9 hotkey to stop recording
             self._recorder.hotkey_stop.connect(self._stop_recording)
+            self._hotkeys = GlobalHotkeys()
+            self._hotkeys.f10_pressed.connect(self._on_f10)
+            self._hotkeys.start()
+        else:
+            self._hotkeys = None
 
         self._build_ui()
         self._refresh_scripts()
@@ -772,8 +872,8 @@ class PhoenixMacro(QMainWindow):
     # ── UI Construction ────────────────────────────────────────────────────
     def _build_ui(self):
         self.setWindowTitle("Phoenix Macro")
-        self.setMinimumSize(500, 680)
-        self.resize(520, 730)
+        self.setMinimumSize(500, 720)
+        self.resize(520, 780)
         self.setStyleSheet(APP_STYLE)
         self.setWindowIcon(self._make_icon())
 
@@ -807,7 +907,7 @@ class PhoenixMacro(QMainWindow):
         cl.addWidget(self._btn_create)
 
         # Hint below Create button
-        hint = QLabel("F9 — stop recording from any window")
+        hint = QLabel("F9 — stop recording   ·   F10 — start / stop script")
         hint.setAlignment(Qt.AlignCenter)
         hint.setStyleSheet(f"color: {DIM}; font-size: 10px; letter-spacing: 1px; padding: 0;")
         cl.addWidget(hint)
@@ -817,7 +917,7 @@ class PhoenixMacro(QMainWindow):
 
         # Script list
         self._list = QListWidget()
-        self._list.setMinimumHeight(180)
+        self._list.setMinimumHeight(160)
         self._list.itemSelectionChanged.connect(self._on_sel_changed)
         self._list.itemDoubleClicked.connect(self._on_start)
         cl.addWidget(self._list)
@@ -826,6 +926,10 @@ class PhoenixMacro(QMainWindow):
         self._meta_lbl = QLabel("")
         self._meta_lbl.setStyleSheet(f"color: {DIM}; font-size: 11px; padding: 0 4px;")
         cl.addWidget(self._meta_lbl)
+
+        # ── Loop / delay panel ─────────────────────────────────────────────
+        self._loop_panel = self._build_loop_panel()
+        cl.addWidget(self._loop_panel)
 
         # START / STOP PLAYBACK button
         self._btn_start = QPushButton("▶   START SCRIPT")
@@ -864,6 +968,87 @@ class PhoenixMacro(QMainWindow):
 
         cl.addLayout(bot)
         vbox.addWidget(content)
+
+    def _build_loop_panel(self) -> QFrame:
+        """Compact panel for repeat count, start delay and between-loop delay."""
+        panel = QFrame()
+        panel.setStyleSheet(f"""
+            QFrame {{
+                background: {SURF};
+                border: 1px solid {BORDER};
+                border-radius: 8px;
+            }}
+            QLabel {{
+                color: {DIM};
+                font-size: 10px;
+                font-weight: bold;
+                letter-spacing: 2px;
+                background: transparent;
+                padding: 0;
+            }}
+        """)
+        pl = QVBoxLayout(panel)
+        pl.setContentsMargins(12, 9, 12, 9)
+        pl.setSpacing(7)
+
+        # ── Row 1: REPEAT count ────────────────────────────────────────────
+        r1 = QHBoxLayout()
+        r1.setSpacing(5)
+        r1.addWidget(QLabel("REPEAT"))
+
+        self._loop_btns: list[QPushButton] = []
+        for label, val in [("×1", 1), ("×3", 3), ("×5", 5), ("×10", 10), ("∞", 0)]:
+            btn = QPushButton(label)
+            btn.setFixedHeight(24)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setProperty("lv", val)
+            btn.clicked.connect(lambda _, v=val: self._set_loop_count(v))
+            self._loop_btns.append(btn)
+            r1.addWidget(btn)
+        r1.addStretch()
+        pl.addLayout(r1)
+
+        # ── Row 2: START IN + LOOP GAP ─────────────────────────────────────
+        r2 = QHBoxLayout()
+        r2.setSpacing(5)
+        r2.addWidget(QLabel("START IN"))
+
+        self._start_delay_btns: list[QPushButton] = []
+        for label, val in [("0s", 0), ("3s", 3), ("5s", 5)]:
+            btn = QPushButton(label)
+            btn.setFixedHeight(24)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setProperty("sv", val)
+            btn.clicked.connect(lambda _, v=val: self._set_start_delay(v))
+            self._start_delay_btns.append(btn)
+            r2.addWidget(btn)
+
+        sep = QLabel("·")
+        sep.setStyleSheet(
+            f"color: {BORDER}; font-size: 14px; background: transparent;"
+            f" padding: 0 6px; letter-spacing: 0px;")
+        r2.addWidget(sep)
+
+        r2.addWidget(QLabel("LOOP GAP"))
+
+        self._loop_delay_btns: list[QPushButton] = []
+        for label, val in [("0s", 0), ("1s", 1), ("3s", 3)]:
+            btn = QPushButton(label)
+            btn.setFixedHeight(24)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setProperty("dv", val)
+            btn.clicked.connect(lambda _, v=val: self._set_loop_delay(v))
+            self._loop_delay_btns.append(btn)
+            r2.addWidget(btn)
+        r2.addStretch()
+        pl.addLayout(r2)
+
+        # Apply defaults (×1, START IN 3s, LOOP GAP 0s)
+        self._set_loop_count(1)
+        self._set_start_delay(3)
+        self._set_loop_delay(0)
+
+        return panel
 
     def _build_header(self) -> QWidget:
         hdr = QWidget()
@@ -1030,9 +1215,30 @@ class PhoenixMacro(QMainWindow):
         p.end()
         return QIcon(px)
 
+    # ── Loop panel setters ─────────────────────────────────────────────────
+    def _set_loop_count(self, n: int):
+        self._loop_count = n
+        for btn in self._loop_btns:
+            btn.setStyleSheet(BTN_LOOP_ACTIVE if btn.property("lv") == n
+                              else BTN_LOOP_INACTIVE)
+
+    def _set_start_delay(self, s: int):
+        self._start_delay_s = s
+        for btn in self._start_delay_btns:
+            btn.setStyleSheet(BTN_LOOP_ACTIVE if btn.property("sv") == s
+                              else BTN_LOOP_INACTIVE)
+
+    def _set_loop_delay(self, s: int):
+        self._loop_delay_s = s
+        for btn in self._loop_delay_btns:
+            btn.setStyleSheet(BTN_LOOP_ACTIVE if btn.property("dv") == s
+                              else BTN_LOOP_INACTIVE)
+
     # ── Timer / Blink ──────────────────────────────────────────────────────
     def _tick(self):
         """Update elapsed-time display every 200 ms while recording or playing."""
+        if self._countdown_val > 0:
+            return  # countdown UI managed by _countdown_tick
         elapsed = int(time.time() - self._tick_t0)
         m, s = divmod(elapsed, 60)
         self._timer_lbl.setText(f"{m:02d}:{s:02d}")
@@ -1071,7 +1277,7 @@ class PhoenixMacro(QMainWindow):
 
     def _on_sel_changed(self):
         sel = bool(self._list.selectedItems())
-        active = self._recording or self._playing
+        active = self._recording or self._playing or self._countdown_val > 0
         self._btn_start.setEnabled(sel and not active)
         self._btn_del.setEnabled(sel and not active)
 
@@ -1105,11 +1311,11 @@ class PhoenixMacro(QMainWindow):
         self._ticker.start(200)
         self._blink_timer.start(500)
 
-        # UI updates
         self._btn_create.setText("⬛   STOP RECORDING")
         self._btn_create.setStyleSheet(BTN_CREATE_REC)
         self._btn_start.setEnabled(False)
         self._btn_del.setEnabled(False)
+        self._loop_panel.setEnabled(False)
         self._status_lbl.setText("RECORDING")
         self._status_lbl.setStyleSheet(
             f"color: {RED_ACT}; font-size: 13px; font-weight: bold;"
@@ -1137,29 +1343,26 @@ class PhoenixMacro(QMainWindow):
         dlg = NameDialog(self, default)
         if dlg.exec_() == QDialog.Accepted:
             raw  = dlg.get_name() or default
-            # Sanitise: keep alphanumerics, spaces, hyphens, underscores
             name = "".join(c for c in raw if c.isalnum() or c in " _-").strip()
             if not name:
                 name = default
             saved = self._recorder.save(name)
             self._refresh_scripts()
-            # Auto-select the newly saved script
             for i in range(self._list.count()):
                 if self._list.item(i).data(Qt.UserRole) == str(saved):
                     self._list.setCurrentRow(i)
                     break
         else:
-            # Cancelled — save with default timestamp name anyway
             self._recorder.save(default)
             self._refresh_scripts()
 
         self._reset_ui()
 
+    # ── Playback — start / stop ────────────────────────────────────────────
     def _on_start(self):
-        if self._playing:
-            # Stop playback
-            if self._player:
-                self._player.stop()
+        """START button and F10 handler — toggles playback (with countdown)."""
+        if self._playing or self._countdown_val > 0:
+            self._cancel_all()
             return
 
         sel = self._list.selectedItems()
@@ -1171,46 +1374,137 @@ class PhoenixMacro(QMainWindow):
             self._refresh_scripts()
             return
 
-        self._playing = True
-        self._tick_t0 = time.time()
-        self._ticker.start(200)
+        self._loop_aborted   = False
+        self._loop_current   = 0
+        self._current_script = fp
+        self._begin_countdown(initial=True)
 
+    def _on_f10(self):
+        """Global F10 hotkey — toggle playback from any window."""
+        if self._recording:
+            return  # don't interfere with active recording
+        self._on_start()
+
+    def _cancel_all(self):
+        """Abort countdown and/or playback, return to idle."""
+        self._loop_aborted = True
+        self._countdown_timer.stop()
+        self._countdown_val = 0
+        if self._playing and self._player:
+            self._player.stop()
+            # _on_play_done will see _loop_aborted=True and call _reset_ui
+        else:
+            # Cancelled during countdown, no player running
+            self._ticker.stop()
+            self._reset_ui()
+
+    # ── Countdown ──────────────────────────────────────────────────────────
+    def _begin_countdown(self, initial: bool):
+        """Start a countdown before (initial=True) or between loops."""
+        delay = self._start_delay_s if initial else self._loop_delay_s
+
+        # Lock the UI into "active" state
         self._btn_start.setText("⬛   STOP")
         self._btn_start.setStyleSheet(BTN_START_PLAYING)
         self._btn_start.setEnabled(True)
         self._btn_create.setEnabled(False)
         self._btn_del.setEnabled(False)
+        self._loop_panel.setEnabled(False)
+        self._timer_lbl.setStyleSheet(
+            f"color: {FIRE2}; font-size: 22px; font-family: 'Courier New',"
+            f" Consolas, monospace; font-weight: bold; background: transparent;")
 
+        if delay <= 0:
+            self._start_playback_now()
+            return
+
+        self._countdown_val = delay
+        self._tick_t0 = time.time()
+        self._ticker.start(200)
+        self._countdown_timer.start()
+        self._update_countdown_ui()
+
+    def _countdown_tick(self):
+        self._countdown_val -= 1
+        if self._countdown_val <= 0:
+            self._countdown_timer.stop()
+            self._countdown_val = 0
+            self._start_playback_now()
+        else:
+            self._update_countdown_ui()
+
+    def _update_countdown_ui(self):
+        self._status_lbl.setText("STARTING")
+        self._status_lbl.setStyleSheet(
+            f"color: {FIRE2}; font-size: 13px; font-weight: bold;"
+            f" letter-spacing: 2px; background: transparent;")
+        loop_hint = self._loop_hint(next_loop=True)
+        detail = f"{loop_hint}  ·  " if loop_hint else ""
+        self._status_detail.setText(f"{detail}Starting in {self._countdown_val}s…")
+        self._timer_lbl.setText(f"  {self._countdown_val}s")
+
+    def _loop_hint(self, next_loop: bool = False) -> str:
+        """Return e.g. 'Loop 2/5' or 'Loop 3/∞' or '' when only 1 run."""
+        if self._loop_count == 1:
+            return ""
+        idx = self._loop_current + (1 if next_loop else 0)
+        total = "∞" if self._loop_count == 0 else str(self._loop_count)
+        return f"Loop {idx}/{total}"
+
+    # ── Playback ───────────────────────────────────────────────────────────
+    def _start_playback_now(self):
+        self._loop_current += 1
+        self._playing  = True
+        self._tick_t0  = time.time()
+        if not self._ticker.isActive():
+            self._ticker.start(200)
+
+        hint = self._loop_hint()
         self._status_lbl.setText("PLAYING")
         self._status_lbl.setStyleSheet(
             f"color: {FIRE3}; font-size: 13px; font-weight: bold;"
             f" letter-spacing: 2px; background: transparent;")
-        self._status_detail.setText("Starting…")
+        prefix = f"{hint}  ·  " if hint else ""
+        self._status_detail.setText(f"{prefix}Starting…")
         self._timer_lbl.setStyleSheet(
             f"color: {ORG_ACT}; font-size: 22px; font-family: 'Courier New',"
             f" Consolas, monospace; font-weight: bold; background: transparent;")
         self._dot.setStyleSheet(
             f"color: {FIRE3}; font-size: 16px; background: transparent;")
 
-        self._player = Player(fp)
+        self._player = Player(self._current_script)
         self._player.progress.connect(self._on_play_progress)
         self._player.error.connect(self._on_play_error)
         self._player.finished.connect(self._on_play_done)
         self._player.start()
 
     def _on_play_progress(self, cur: int, total: int):
-        pct = int(cur / total * 100) if total else 0
-        self._status_detail.setText(f"Event  {cur} / {total}")
+        pct  = int(cur / total * 100) if total else 0
+        hint = self._loop_hint()
+        prefix = f"{hint}  ·  " if hint else ""
+        self._status_detail.setText(f"{prefix}Event  {cur} / {total}")
         self._prog_lbl.setText(f"{pct}%")
 
     def _on_play_error(self, msg: str):
         self._show_error(f"Playback error:\n{msg}")
 
     def _on_play_done(self):
-        self._ticker.stop()
         self._playing = False
         self._prog_lbl.setText("")
-        self._reset_ui()
+
+        if self._loop_aborted:
+            self._loop_aborted = False
+            self._ticker.stop()
+            self._reset_ui()
+            return
+
+        # Natural completion — check if more iterations remain
+        more = (self._loop_count == 0) or (self._loop_current < self._loop_count)
+        if more:
+            self._begin_countdown(initial=False)
+        else:
+            self._ticker.stop()
+            self._reset_ui()
 
     def _on_delete(self):
         sel = self._list.selectedItems()
@@ -1265,7 +1559,6 @@ class PhoenixMacro(QMainWindow):
     def _apply_update(self, new_exe: str):
         """Replace this exe after the process exits using a helper .bat script."""
         if not getattr(sys, 'frozen', False):
-            # Running from source — just tell the user where the file is
             self._show_info(
                 "Update downloaded.\n\n"
                 f"Replace PhoenixMacro.exe manually with:\n{new_exe}")
@@ -1301,6 +1594,7 @@ class PhoenixMacro(QMainWindow):
         self._btn_create.setEnabled(True)
         self._btn_start.setText("▶   START SCRIPT")
         self._btn_start.setStyleSheet(BTN_START_IDLE)
+        self._loop_panel.setEnabled(True)
         self._status_lbl.setText("IDLE")
         self._status_lbl.setStyleSheet(
             f"color: {TEXT}; font-size: 13px; font-weight: bold;"
@@ -1349,6 +1643,8 @@ class PhoenixMacro(QMainWindow):
         if self._downloader and self._downloader.isRunning():
             self._downloader.stop()
             self._downloader.wait(2000)
+        if self._hotkeys:
+            self._hotkeys.stop()
         event.accept()
 
 
@@ -1368,7 +1664,6 @@ def main():
     app.setApplicationVersion(VERSION)
 
     if not HAS_PYNPUT:
-        # Show a warning but still open the app so the user can see the message
         print("[WARNING] pynput is not installed — recording/playback disabled.")
         print("          Run:  pip install pynput")
 
