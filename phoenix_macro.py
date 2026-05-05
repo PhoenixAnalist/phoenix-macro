@@ -37,7 +37,7 @@ except ImportError:
 # ── Paths (works both from source and from PyInstaller --onefile bundle) ──────
 if getattr(sys, 'frozen', False):
     BASE_DIR   = Path(sys.executable).parent
-    BUNDLE_DIR = Path(getattr(sys, '_MEIPASS', BASE_DIR))  # extracted --add-data files
+    BUNDLE_DIR = Path(getattr(sys, '_MEIPASS', BASE_DIR))
 else:
     BASE_DIR   = Path(__file__).parent
     BUNDLE_DIR = BASE_DIR
@@ -47,8 +47,6 @@ SETTINGS_FILE = BASE_DIR / "phoenix_settings.json"
 SCRIPTS_DIR.mkdir(exist_ok=True)
 
 # Clean up leftover _MEI* extraction folders from previous runs.
-# With --runtime-tmpdir . the bootloader extracts next to the exe; old dirs
-# are normally removed on exit but may linger after a crash or forced kill.
 if getattr(sys, 'frozen', False):
     import shutil
     _current_mei = str(getattr(sys, '_MEIPASS', ''))
@@ -60,13 +58,12 @@ if getattr(sys, 'frozen', False):
                 pass
 
 # ── Version & Update ──────────────────────────────────────────────────────────
-VERSION     = "1.5.2"                        # bump this with each release tag
+VERSION     = "1.6.0"
 GITHUB_REPO = "PhoenixAnalist/phoenix-macro"
 
-# subprocess.CREATE_NO_WINDOW is Windows-only
 _NO_WIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-# ── Pynput key map (shared by Recorder, GlobalHotkeys, Player, Settings) ──────
+# ── Pynput key map ────────────────────────────────────────────────────────────
 if HAS_PYNPUT:
     PYNPUT_KEY_MAP = {
         'Key.space': Key.space, 'Key.enter': Key.enter,
@@ -105,7 +102,6 @@ else:
 
 
 def parse_pynput_key(s: str):
-    """Convert stored key string ('Key.f9', 'a') to a pynput key object."""
     if not s:
         return None
     if len(s) == 1:
@@ -114,7 +110,6 @@ def parse_pynput_key(s: str):
 
 
 def key_to_display(s: str) -> str:
-    """Convert stored key string to a short human-readable label (e.g. 'F10')."""
     if not s:
         return "—"
     if len(s) == 1:
@@ -122,235 +117,128 @@ def key_to_display(s: str) -> str:
     return s.replace('Key.', '').upper().replace('_', ' ')
 
 
-# ── Phoenix Colour Palette ─────────────────────────────────────────────────────
-BG       = "#090909"   # near-black window background
-SURF     = "#111111"   # panel / card surface
-SURF2    = "#1a1108"   # warmer dark surface (header underlay)
-BORDER   = "#2d1a00"   # dark amber border
-FIRE1    = "#cc2800"   # deep fire red
-FIRE2    = "#e85a00"   # orange flame
-FIRE3    = "#ff9a00"   # golden flame tip
-GLOW     = "#ff6600"   # generic glow
-TEXT     = "#f2e8d9"   # warm white
-DIM      = "#6a5a45"   # dimmed text / inactive elements
-RED_ACT  = "#ff2020"   # recording-active indicator
-ORG_ACT  = "#ffaa00"   # playback-active indicator
+# ─────────────────────────────────────────────────────────────────────────────
+# Theme system
+# ─────────────────────────────────────────────────────────────────────────────
 
-# ── Button Stylesheets ─────────────────────────────────────────────────────────
-_BTN_BASE = """
-    border-radius: 10px;
+THEMES = {
+    'Phoenix Fire': {
+        'BG':          '#090909',
+        'BG_TOP':      '#200a00',
+        'BG_MID':      '#0f0400',
+        'SURF':        '#111111',
+        'SURF2':       '#1a1108',
+        'BORDER':      '#2d1a00',
+        'ACCENT1':     '#cc2800',
+        'ACCENT2':     '#e85a00',
+        'ACCENT3':     '#ff9a00',
+        'TEXT':        '#f2e8d9',
+        'DIM':         '#6a5a45',
+        'STATE1':      '#ff2020',
+        'STATE1_DARK': '#550000',
+        'STATE2':      '#ffaa00',
+        'BTN1A':       '#7a1200',
+        'BTN1B':       '#4a0800',
+        'BTN1H':       '#aa1800',
+        'BTN2A':       '#4a2800',
+        'BTN2B':       '#2d1800',
+        'BTN2H':       '#663a00',
+    },
+    'Midnight Ocean': {
+        'BG':          '#030b18',
+        'BG_TOP':      '#001428',
+        'BG_MID':      '#000c1e',
+        'SURF':        '#061525',
+        'SURF2':       '#091e35',
+        'BORDER':      '#003355',
+        'ACCENT1':     '#0055aa',
+        'ACCENT2':     '#0088cc',
+        'ACCENT3':     '#00ccff',
+        'TEXT':        '#d0e8ff',
+        'DIM':         '#3d6080',
+        'STATE1':      '#00eeff',
+        'STATE1_DARK': '#003344',
+        'STATE2':      '#00ffaa',
+        'BTN1A':       '#003d88',
+        'BTN1B':       '#002255',
+        'BTN1H':       '#0055aa',
+        'BTN2A':       '#003366',
+        'BTN2B':       '#001e3d',
+        'BTN2H':       '#004488',
+    },
+    'Neon Storm': {
+        'BG':          '#08000f',
+        'BG_TOP':      '#180028',
+        'BG_MID':      '#0d0018',
+        'SURF':        '#0f001e',
+        'SURF2':       '#18002e',
+        'BORDER':      '#3d006e',
+        'ACCENT1':     '#7700cc',
+        'ACCENT2':     '#aa00ff',
+        'ACCENT3':     '#dd88ff',
+        'TEXT':        '#f0dcff',
+        'DIM':         '#664499',
+        'STATE1':      '#ff00ff',
+        'STATE1_DARK': '#440033',
+        'STATE2':      '#cc88ff',
+        'BTN1A':       '#550088',
+        'BTN1B':       '#330055',
+        'BTN1H':       '#7700aa',
+        'BTN2A':       '#440066',
+        'BTN2B':       '#280044',
+        'BTN2H':       '#5d0088',
+    },
+}
+
+# Active palette — mutated by _load_theme()
+_T: dict = dict(THEMES['Phoenix Fire'])
+
+
+def _c(k: str) -> str:
+    return _T.get(k, '#000000')
+
+
+def _load_theme(name: str):
+    global _T
+    palette = THEMES.get(name, THEMES['Phoenix Fire'])
+    _T.clear()
+    _T.update(palette)
+
+
+# ── Stylesheet functions (re-evaluated each call → always use current theme) ──
+
+def _btn_base() -> str:
+    return """
+    border-radius: 20px;
     padding: 14px 28px;
     font-size: 14px;
     font-weight: bold;
     letter-spacing: 2px;
-"""
+    """
 
-BTN_CREATE_IDLE = f"""
-QPushButton {{
-    {_BTN_BASE}
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #7a1200, stop:1 #4a0800);
-    color: {TEXT};
-    border: 1px solid {FIRE1};
-}}
-QPushButton:hover {{
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #aa1800, stop:1 #7a1000);
-    border-color: {FIRE2};
-}}
-QPushButton:pressed {{
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #cc2000, stop:1 #991800);
-}}
-"""
 
-BTN_CREATE_REC = f"""
-QPushButton {{
-    {_BTN_BASE}
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #cc0000, stop:1 #880000);
-    color: #ffffff;
-    border: 2px solid #ff2200;
-}}
-QPushButton:hover {{
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #ff1100, stop:1 #aa0000);
-}}
-"""
-
-BTN_START_IDLE = f"""
-QPushButton {{
-    {_BTN_BASE}
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #4a2800, stop:1 #2d1800);
-    color: {FIRE3};
-    border: 1px solid {FIRE2};
-}}
-QPushButton:hover {{
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #663a00, stop:1 #3d2200);
-    border-color: {FIRE3};
-}}
-QPushButton:pressed {{
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #7a4800, stop:1 #4d2e00);
-}}
-QPushButton:disabled {{
-    background: #181818;
-    color: #3a3a3a;
-    border-color: #252525;
-}}
-"""
-
-BTN_START_PLAYING = f"""
-QPushButton {{
-    {_BTN_BASE}
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #553300, stop:1 #331f00);
-    color: {FIRE3};
-    border: 2px solid {FIRE2};
-}}
-QPushButton:hover {{
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #7a4d00, stop:1 #4d2e00);
-}}
-"""
-
-BTN_DELETE = f"""
-QPushButton {{
-    background: #111111;
-    color: {DIM};
-    border: 1px solid #252525;
-    border-radius: 8px;
+def _btn_sm_base() -> str:
+    return """
+    border-radius: 12px;
     padding: 8px 18px;
     font-size: 12px;
     letter-spacing: 1px;
-}}
-QPushButton:hover {{
-    background: #2a0a0a;
-    color: {FIRE1};
-    border-color: {FIRE1};
-}}
-QPushButton:disabled {{
-    color: #2a2a2a;
-    border-color: #1a1a1a;
-}}
-"""
+    """
 
-BTN_UPDATE = f"""
-QPushButton {{
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #4a3000, stop:1 #2d1e00);
-    color: {FIRE3};
-    border: 1px solid {FIRE2};
-    border-radius: 8px;
-    padding: 8px 18px;
-    font-size: 12px;
-    letter-spacing: 1px;
-    font-weight: bold;
-}}
-QPushButton:hover {{
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #6a4400, stop:1 #3d2800);
-    border-color: {FIRE3};
-    color: #ffffff;
-}}
-QPushButton:pressed {{
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #7a5000, stop:1 #4d3200);
-}}
-QPushButton:disabled {{
-    color: {DIM};
-    border-color: #252525;
-    background: #111111;
-}}
-"""
 
-# Compact variant for dialog buttons
-BTN_DIALOG_OK = f"""
-QPushButton {{
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #7a1200, stop:1 #4a0800);
-    color: {TEXT};
-    border: 1px solid {FIRE1};
-    border-radius: 7px;
-    padding: 6px 22px;
-    font-size: 13px;
-    font-weight: bold;
-    letter-spacing: 1px;
-}}
-QPushButton:hover {{
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #aa1800, stop:1 #7a1000);
-    border-color: {FIRE2};
-}}
-QPushButton:pressed {{
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #cc2000, stop:1 #991800);
-}}
-"""
-
-# Small toggle buttons for the loop/delay panel
-BTN_LOOP_INACTIVE = f"""
-QPushButton {{
-    background: #1a1a1a;
-    color: {DIM};
-    border: 1px solid #2d2d2d;
-    border-radius: 5px;
-    padding: 3px 9px;
-    font-size: 11px;
-    font-weight: bold;
-    letter-spacing: 1px;
-    min-width: 28px;
-}}
-QPushButton:hover {{
-    background: #252525;
-    color: {TEXT};
-    border-color: {BORDER};
-}}
-QPushButton:disabled {{
-    color: #2a2a2a;
-    border-color: #1a1a1a;
-    background: #131313;
-}}
-"""
-
-BTN_LOOP_ACTIVE = f"""
-QPushButton {{
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #3d2000, stop:1 #251200);
-    color: {FIRE3};
-    border: 1px solid {FIRE2};
-    border-radius: 5px;
-    padding: 3px 9px;
-    font-size: 11px;
-    font-weight: bold;
-    letter-spacing: 1px;
-    min-width: 28px;
-}}
-QPushButton:disabled {{
-    color: {DIM};
-    border-color: {BORDER};
-    background: #1e1000;
-}}
-"""
-
-APP_STYLE = f"""
+def _app_style() -> str:
+    return f"""
 QMainWindow, QWidget {{
-    background-color: {BG};
-    color: {TEXT};
+    color: {_c('TEXT')};
     font-family: 'Segoe UI', Arial, sans-serif;
 }}
-QWidget#root {{
-    background-color: {BG};
-}}
 QListWidget {{
-    background-color: {SURF};
-    border: 1px solid {BORDER};
-    border-radius: 8px;
+    background-color: {_c('SURF')};
+    border: 1px solid {_c('BORDER')};
+    border-radius: 10px;
     padding: 4px;
     outline: none;
-    color: {TEXT};
+    color: {_c('TEXT')};
     font-size: 13px;
 }}
 QListWidget::item {{
@@ -360,50 +248,270 @@ QListWidget::item {{
     border-left: 3px solid transparent;
 }}
 QListWidget::item:selected {{
-    background-color: #2d1400;
-    border-left: 3px solid {FIRE2};
-    color: {FIRE3};
+    background-color: {_c('BTN2B')};
+    border-left: 3px solid {_c('ACCENT2')};
+    color: {_c('ACCENT3')};
 }}
 QListWidget::item:hover:!selected {{
-    background-color: #1d1100;
-    border-left: 3px solid {BORDER};
+    background-color: {_c('SURF2')};
+    border-left: 3px solid {_c('BORDER')};
 }}
 QScrollBar:vertical {{
-    background: {SURF};
+    background: {_c('SURF')};
     width: 7px;
     border-radius: 3px;
 }}
 QScrollBar::handle:vertical {{
-    background: {BORDER};
+    background: {_c('BORDER')};
     border-radius: 3px;
     min-height: 20px;
 }}
 QScrollBar::handle:vertical:hover {{
-    background: {FIRE1};
+    background: {_c('ACCENT1')};
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0;
 }}
 QFrame[frameShape="4"] {{
-    color: {BORDER};
-    background: {BORDER};
+    color: {_c('BORDER')};
+    background: {_c('BORDER')};
     max-height: 1px;
 }}
 """
+
+
+def _btn_create_idle() -> str:
+    return f"""
+QPushButton {{
+    {_btn_base()}
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('BTN1A')}, stop:1 {_c('BTN1B')});
+    color: {_c('TEXT')};
+    border: 1px solid {_c('ACCENT1')};
+}}
+QPushButton:hover {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('BTN1H')}, stop:1 {_c('BTN1A')});
+    border-color: {_c('ACCENT2')};
+}}
+QPushButton:pressed {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('ACCENT1')}, stop:1 {_c('BTN1A')});
+}}
+"""
+
+
+def _btn_create_rec() -> str:
+    return f"""
+QPushButton {{
+    {_btn_base()}
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('STATE1')}, stop:1 {_c('BTN1B')});
+    color: #ffffff;
+    border: 2px solid {_c('STATE1')};
+}}
+QPushButton:hover {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('STATE1')}, stop:1 {_c('BTN1A')});
+}}
+"""
+
+
+def _btn_start_idle() -> str:
+    return f"""
+QPushButton {{
+    {_btn_base()}
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('BTN2A')}, stop:1 {_c('BTN2B')});
+    color: {_c('ACCENT3')};
+    border: 1px solid {_c('ACCENT2')};
+}}
+QPushButton:hover {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('BTN2H')}, stop:1 {_c('BTN2A')});
+    border-color: {_c('ACCENT3')};
+}}
+QPushButton:pressed {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('BTN2H')}, stop:1 {_c('BTN2A')});
+}}
+QPushButton:disabled {{
+    background: {_c('SURF')};
+    color: {_c('DIM')};
+    border-color: {_c('BORDER')};
+    border-radius: 20px;
+}}
+"""
+
+
+def _btn_start_playing() -> str:
+    return f"""
+QPushButton {{
+    {_btn_base()}
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('BTN2H')}, stop:1 {_c('BTN2A')});
+    color: {_c('ACCENT3')};
+    border: 2px solid {_c('ACCENT2')};
+}}
+QPushButton:hover {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('ACCENT2')}, stop:1 {_c('BTN2A')});
+}}
+"""
+
+
+def _btn_delete() -> str:
+    return f"""
+QPushButton {{
+    {_btn_sm_base()}
+    background: {_c('SURF')};
+    color: {_c('DIM')};
+    border: 1px solid {_c('BORDER')};
+}}
+QPushButton:hover {{
+    background: {_c('BTN1B')};
+    color: {_c('ACCENT1')};
+    border-color: {_c('ACCENT1')};
+}}
+QPushButton:disabled {{
+    color: {_c('BORDER')};
+    border-color: {_c('SURF2')};
+    background: {_c('SURF')};
+}}
+"""
+
+
+def _btn_update() -> str:
+    return f"""
+QPushButton {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('BTN2A')}, stop:1 {_c('BTN2B')});
+    color: {_c('ACCENT3')};
+    border: 1px solid {_c('ACCENT2')};
+    border-radius: 12px;
+    padding: 8px 18px;
+    font-size: 12px;
+    letter-spacing: 1px;
+    font-weight: bold;
+}}
+QPushButton:hover {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('BTN2H')}, stop:1 {_c('BTN2A')});
+    border-color: {_c('ACCENT3')};
+    color: #ffffff;
+}}
+QPushButton:disabled {{
+    color: {_c('DIM')};
+    border-color: {_c('BORDER')};
+    background: {_c('SURF')};
+}}
+"""
+
+
+def _btn_dialog_ok() -> str:
+    return f"""
+QPushButton {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('BTN1A')}, stop:1 {_c('BTN1B')});
+    color: {_c('TEXT')};
+    border: 1px solid {_c('ACCENT1')};
+    border-radius: 12px;
+    padding: 6px 22px;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 1px;
+}}
+QPushButton:hover {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('BTN1H')}, stop:1 {_c('BTN1A')});
+    border-color: {_c('ACCENT2')};
+}}
+QPushButton:pressed {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('ACCENT1')}, stop:1 {_c('BTN1B')});
+}}
+"""
+
+
+def _btn_loop_inactive() -> str:
+    return f"""
+QPushButton {{
+    background: {_c('SURF')};
+    color: {_c('DIM')};
+    border: 1px solid {_c('BORDER')};
+    border-radius: 8px;
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    min-width: 28px;
+}}
+QPushButton:hover {{
+    background: {_c('SURF2')};
+    color: {_c('TEXT')};
+    border-color: {_c('ACCENT1')};
+}}
+QPushButton:disabled {{
+    color: {_c('BORDER')};
+    border-color: {_c('SURF')};
+    background: {_c('SURF')};
+}}
+"""
+
+
+def _btn_loop_active() -> str:
+    return f"""
+QPushButton {{
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 {_c('BTN2A')}, stop:1 {_c('BTN2B')});
+    color: {_c('ACCENT3')};
+    border: 1px solid {_c('ACCENT2')};
+    border-radius: 8px;
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    min-width: 28px;
+}}
+QPushButton:disabled {{
+    color: {_c('DIM')};
+    border-color: {_c('BORDER')};
+    background: {_c('SURF2')};
+}}
+"""
+
+
+# Fixed preview styles for theme selector buttons (always show their own colors)
+_THEME_BTN_STYLES = {
+    'Phoenix Fire': {
+        'idle':   "background:#2d1000;color:#e85a00;border:2px solid #3d1800;"
+                  "border-radius:10px;padding:6px 12px;font-size:12px;font-weight:bold;",
+        'active': "background:#4a1800;color:#ff9a00;border:2px solid #e85a00;"
+                  "border-radius:10px;padding:6px 12px;font-size:12px;font-weight:bold;",
+    },
+    'Midnight Ocean': {
+        'idle':   "background:#001830;color:#0088cc;border:2px solid #002244;"
+                  "border-radius:10px;padding:6px 12px;font-size:12px;font-weight:bold;",
+        'active': "background:#003355;color:#00ccff;border:2px solid #0088cc;"
+                  "border-radius:10px;padding:6px 12px;font-size:12px;font-weight:bold;",
+    },
+    'Neon Storm': {
+        'idle':   "background:#200040;color:#aa00ff;border:2px solid #330055;"
+                  "border-radius:10px;padding:6px 12px;font-size:12px;font-weight:bold;",
+        'active': "background:#3d0070;color:#dd88ff;border:2px solid #aa00ff;"
+                  "border-radius:10px;padding:6px 12px;font-size:12px;font-weight:bold;",
+    },
+}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Recorder
 # ─────────────────────────────────────────────────────────────────────────────
 class Recorder(QObject):
-    """Captures global mouse and keyboard events into a list.
-    Emits hotkey_stop when F9 is pressed so the UI can stop recording
-    from any window without needing focus on Phoenix Macro.
-    Mouse-move events are throttled to ~30 fps to keep file sizes reasonable.
-    """
-    hotkey_stop = pyqtSignal()   # emitted when F9 pressed during recording
+    """Captures global mouse and keyboard events into a list."""
+    hotkey_stop = pyqtSignal()
 
-    MOVE_INTERVAL = 0.033  # seconds between successive mouse-move records
+    MOVE_INTERVAL = 0.033
 
     def __init__(self):
         super().__init__()
@@ -413,17 +521,15 @@ class Recorder(QObject):
         self._lock = threading.Lock()
         self._listeners: list = []
         self.recording = False
-        self._stop_key_str = 'Key.f9'   # configurable; updated from AppSettings
+        self._stop_key_str = 'Key.f9'
 
-    # ── public API ─────────────────────────────────────────────────────────
     def start(self):
-        """Begin recording. Non-blocking; listeners run on daemon threads."""
         self.events = []
         self._start = time.perf_counter()
         self._last_move = 0.0
         self.recording = True
 
-        rec = self  # closure reference
+        rec = self
 
         def on_move(x, y):
             now = time.perf_counter()
@@ -444,7 +550,6 @@ class Recorder(QObject):
                        't': time.perf_counter() - rec._start})
 
         def on_press(key):
-            # configurable stop-recording hotkey (default F9)
             try:
                 stop_key = parse_pynput_key(rec._stop_key_str)
                 if stop_key is not None and key == stop_key:
@@ -479,7 +584,6 @@ class Recorder(QObject):
         kl.start()
 
     def stop(self) -> list:
-        """Stop recording and return the captured event list."""
         self.recording = False
         for lst in self._listeners:
             try:
@@ -490,7 +594,6 @@ class Recorder(QObject):
         return list(self.events)
 
     def save(self, name: str) -> Path:
-        """Persist events to SCRIPTS_DIR/<name>.json, return the path."""
         filepath = SCRIPTS_DIR / f"{name}.json"
         duration = round(self.events[-1]['t'], 3) if self.events else 0.0
         payload = {
@@ -504,7 +607,6 @@ class Recorder(QObject):
             json.dump(payload, fh, separators=(',', ':'))
         return filepath
 
-    # ── internal ────────────────────────────────────────────────────────────
     def _push(self, event: dict):
         if self.recording:
             with self._lock:
@@ -512,11 +614,10 @@ class Recorder(QObject):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Player  (QThread so the UI stays responsive during playback)
+# Player
 # ─────────────────────────────────────────────────────────────────────────────
 class Player(QThread):
-    """Replays a saved script with correct timing using pynput controllers."""
-    progress = pyqtSignal(int, int)   # (current_event_index, total_events)
+    progress = pyqtSignal(int, int)
     error    = pyqtSignal(str)
     finished = pyqtSignal()
 
@@ -542,10 +643,8 @@ class Player(QThread):
                 if self._abort:
                     break
 
-                # Sleep precisely until this event's timestamp
                 wait = ev['t'] - (time.perf_counter() - t0)
                 if wait > 0.0:
-                    # Break sleep into small slices so abort is responsive
                     end = time.perf_counter() + wait
                     while time.perf_counter() < end and not self._abort:
                         time.sleep(min(0.04, end - time.perf_counter()))
@@ -557,7 +656,6 @@ class Player(QThread):
 
                 if etype == 'move':
                     mc.position = (ev['x'], ev['y'])
-
                 elif etype == 'click':
                     mc.position = (ev['x'], ev['y'])
                     btn = self._btn(ev['btn'])
@@ -565,16 +663,13 @@ class Player(QThread):
                         mc.press(btn)
                     else:
                         mc.release(btn)
-
                 elif etype == 'scroll':
                     mc.position = (ev['x'], ev['y'])
                     mc.scroll(ev['dx'], ev['dy'])
-
                 elif etype == 'kdn':
                     key = self._key(ev['k'])
                     if key is not None:
                         kc.press(key)
-
                 elif etype == 'kup':
                     key = self._key(ev['k'])
                     if key is not None:
@@ -587,7 +682,6 @@ class Player(QThread):
 
         self.finished.emit()
 
-    # ── helpers ─────────────────────────────────────────────────────────────
     @staticmethod
     def _btn(s: str) -> Button:
         if 'right'  in s: return Button.right
@@ -600,13 +694,9 @@ class Player(QThread):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GlobalHotkeys  (persistent background listener for F10 start/stop)
+# GlobalHotkeys
 # ─────────────────────────────────────────────────────────────────────────────
 class GlobalHotkeys(QObject):
-    """Runs a permanent pynput keyboard listener that emits Qt signals.
-    The play/stop key is configurable (default F10).
-    Safe to call stop() more than once; call start(key_str) to restart with a new key.
-    """
     hotkey_triggered = pyqtSignal()
 
     def __init__(self):
@@ -638,23 +728,16 @@ class GlobalHotkeys(QObject):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# UpdateChecker  (runs once at startup, silently)
+# UpdateChecker
 # ─────────────────────────────────────────────────────────────────────────────
 class UpdateChecker(QThread):
-    """Fetches the latest GitHub release and compares its tag with VERSION.
-    Emits update_available only when a newer version exists and has an .exe asset.
-    All network errors are swallowed — startup is never blocked.
-    NOTE: the GitHub repo must be public for unauthenticated API access.
-    """
-    update_available = pyqtSignal(str, str)   # (new_version, download_url)
+    update_available = pyqtSignal(str, str)
 
     def run(self):
         try:
             import urllib.request
             import ssl as _ssl
 
-            # certifi provides a reliable CA bundle inside PyInstaller exes;
-            # fall back to the system store if certifi isn't bundled.
             try:
                 import certifi
                 ctx = _ssl.create_default_context(cafile=certifi.where())
@@ -672,7 +755,6 @@ class UpdateChecker(QThread):
             if not tag:
                 return
 
-            # Find the Windows exe asset
             url = next(
                 (a["browser_download_url"]
                  for a in data.get("assets", [])
@@ -695,7 +777,6 @@ class UpdateChecker(QThread):
                 self.update_available.emit(tag, url)
 
         except Exception:
-            # Write a one-line log so the user can diagnose network issues
             try:
                 import traceback
                 log = BASE_DIR / "phoenix_update.log"
@@ -705,12 +786,11 @@ class UpdateChecker(QThread):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Downloader  (background download with progress)
+# Downloader
 # ─────────────────────────────────────────────────────────────────────────────
 class Downloader(QThread):
-    """Downloads a URL to a local file, emitting integer progress (0-100)."""
-    progress = pyqtSignal(int)   # 0-100 %
-    done     = pyqtSignal(str)   # local path on success
+    progress = pyqtSignal(int)
+    done     = pyqtSignal(str)
     error    = pyqtSignal(str)
 
     def __init__(self, url: str, dest: str):
@@ -757,7 +837,6 @@ class Downloader(QThread):
                     pass
                 return
 
-            # Validate: must be a Windows PE (starts with "MZ") and at least 1 MB
             dest_path = Path(self.dest)
             file_size = dest_path.stat().st_size
             with open(self.dest, "rb") as fh:
@@ -779,13 +858,13 @@ class Downloader(QThread):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# AppSettings  (persistent JSON config stored next to the exe)
+# AppSettings
 # ─────────────────────────────────────────────────────────────────────────────
 class AppSettings:
-    """Load/save user preferences from phoenix_settings.json."""
     _DEFAULTS = {
-        'hotkey_record_stop':  'Key.f9',
-        'hotkey_play_toggle':  'Key.f10',
+        'hotkey_record_stop': 'Key.f9',
+        'hotkey_play_toggle': 'Key.f10',
+        'theme':              'Phoenix Fire',
     }
 
     def __init__(self):
@@ -818,10 +897,9 @@ class AppSettings:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Custom dark-themed dialog for naming a saved script
+# NameDialog
 # ─────────────────────────────────────────────────────────────────────────────
 class NameDialog(QDialog):
-    """Minimal dark dialog that asks the user for a script name."""
     def __init__(self, parent=None, default: str = ""):
         super().__init__(parent)
         self.setWindowTitle("Save Script")
@@ -830,25 +908,25 @@ class NameDialog(QDialog):
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self.setStyleSheet(f"""
             QDialog {{
-                background-color: #131313;
-                border: 1px solid {BORDER};
+                background-color: {_c('SURF')};
+                border: 1px solid {_c('BORDER')};
             }}
             QLabel {{
-                color: {TEXT};
+                color: {_c('TEXT')};
                 font-size: 13px;
                 background: transparent;
             }}
             QLineEdit {{
-                background-color: #1c1c1c;
-                color: {TEXT};
-                border: 1px solid {BORDER};
-                border-radius: 6px;
+                background-color: {_c('SURF2')};
+                color: {_c('TEXT')};
+                border: 1px solid {_c('BORDER')};
+                border-radius: 8px;
                 padding: 9px 12px;
                 font-size: 13px;
-                selection-background-color: {FIRE1};
+                selection-background-color: {_c('ACCENT1')};
             }}
             QLineEdit:focus {{
-                border-color: {FIRE2};
+                border-color: {_c('ACCENT2')};
             }}
         """)
 
@@ -868,14 +946,14 @@ class NameDialog(QDialog):
         row.addStretch()
 
         btn_cancel = QPushButton("Cancel")
-        btn_cancel.setStyleSheet(BTN_DELETE)
+        btn_cancel.setStyleSheet(_btn_delete())
         btn_cancel.setFixedHeight(36)
         btn_cancel.setCursor(Qt.PointingHandCursor)
         btn_cancel.clicked.connect(self.reject)
         row.addWidget(btn_cancel)
 
         btn_save = QPushButton("Save")
-        btn_save.setStyleSheet(BTN_DIALOG_OK)
+        btn_save.setStyleSheet(_btn_dialog_ok())
         btn_save.setFixedHeight(36)
         btn_save.setCursor(Qt.PointingHandCursor)
         btn_save.clicked.connect(self.accept)
@@ -889,7 +967,7 @@ class NameDialog(QDialog):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Confirm dialog (dark-themed replacement for QMessageBox)
+# ConfirmDialog
 # ─────────────────────────────────────────────────────────────────────────────
 class ConfirmDialog(QDialog):
     def __init__(self, parent=None, title: str = "Confirm", message: str = ""):
@@ -898,10 +976,9 @@ class ConfirmDialog(QDialog):
         self.setModal(True)
         self.setFixedSize(380, 140)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-        self.setStyleSheet(f"""
-            QDialog {{ background-color: #131313; border: 1px solid {BORDER}; }}
-            QLabel  {{ color: {TEXT}; font-size: 13px; background: transparent; }}
-        """)
+        self.setStyleSheet(
+            f"QDialog {{ background-color: {_c('SURF')}; border: 1px solid {_c('BORDER')}; }}"
+            f"QLabel  {{ color: {_c('TEXT')}; font-size: 13px; background: transparent; }}")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 20, 22, 20)
         layout.setSpacing(16)
@@ -912,14 +989,14 @@ class ConfirmDialog(QDialog):
         row.addStretch()
 
         btn_no = QPushButton("No")
-        btn_no.setStyleSheet(BTN_DELETE)
+        btn_no.setStyleSheet(_btn_delete())
         btn_no.setFixedHeight(36)
         btn_no.setCursor(Qt.PointingHandCursor)
         btn_no.clicked.connect(self.reject)
         row.addWidget(btn_no)
 
         btn_yes = QPushButton("Yes, Delete")
-        btn_yes.setStyleSheet(BTN_DIALOG_OK)
+        btn_yes.setStyleSheet(_btn_dialog_ok())
         btn_yes.setFixedHeight(36)
         btn_yes.setCursor(Qt.PointingHandCursor)
         btn_yes.clicked.connect(self.accept)
@@ -929,11 +1006,9 @@ class ConfirmDialog(QDialog):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Action Editor  (view & delete individual events in a script)
+# ActionEditorDialog
 # ─────────────────────────────────────────────────────────────────────────────
 class ActionEditorDialog(QDialog):
-    """Shows all recorded events for a script; supports multi-select delete."""
-
     def __init__(self, parent=None, filepath: str = ""):
         super().__init__(parent)
         self._filepath    = filepath
@@ -946,16 +1021,16 @@ class ActionEditorDialog(QDialog):
         self.setMinimumSize(520, 380)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self.setStyleSheet(f"""
-            QDialog  {{ background: #131313; border: 1px solid {BORDER}; }}
-            QLabel   {{ color: {TEXT}; font-size: 13px; background: transparent; }}
+            QDialog  {{ background: {_c('SURF')}; border: 1px solid {_c('BORDER')}; }}
+            QLabel   {{ color: {_c('TEXT')}; font-size: 13px; background: transparent; }}
             QListWidget {{
-                background: {SURF};
-                border: 1px solid {BORDER};
-                border-radius: 6px;
-                color: {TEXT};
+                background: {_c('BG')};
+                border: 1px solid {_c('BORDER')};
+                border-radius: 8px;
+                color: {_c('TEXT')};
                 font-size: 12px;
                 font-family: 'Courier New', Consolas, monospace;
-                selection-background-color: #2d1400;
+                selection-background-color: {_c('BTN2B')};
                 outline: none;
             }}
             QListWidget::item {{
@@ -963,15 +1038,15 @@ class ActionEditorDialog(QDialog):
                 border-radius: 3px;
             }}
             QListWidget::item:selected {{
-                background: #2d1400;
-                color: {FIRE3};
-                border-left: 3px solid {FIRE2};
+                background: {_c('BTN2B')};
+                color: {_c('ACCENT3')};
+                border-left: 3px solid {_c('ACCENT2')};
             }}
             QScrollBar:vertical {{
-                background: {SURF}; width: 7px; border-radius: 3px;
+                background: {_c('SURF')}; width: 7px; border-radius: 3px;
             }}
             QScrollBar::handle:vertical {{
-                background: {BORDER}; border-radius: 3px; min-height: 20px;
+                background: {_c('BORDER')}; border-radius: 3px; min-height: 20px;
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
         """)
@@ -980,31 +1055,28 @@ class ActionEditorDialog(QDialog):
         lay.setContentsMargins(18, 16, 18, 16)
         lay.setSpacing(10)
 
-        # Title row
         tr = QHBoxLayout()
         self._title_lbl = QLabel("SCRIPT EDITOR")
         self._title_lbl.setStyleSheet(
-            f"color: {FIRE3}; font-size: 14px; font-weight: bold;"
+            f"color: {_c('ACCENT3')}; font-size: 14px; font-weight: bold;"
             f" letter-spacing: 2px; background: transparent;")
         tr.addWidget(self._title_lbl)
         tr.addStretch()
         self._count_lbl = QLabel("")
         self._count_lbl.setStyleSheet(
-            f"color: {DIM}; font-size: 11px; background: transparent;")
+            f"color: {_c('DIM')}; font-size: 11px; background: transparent;")
         tr.addWidget(self._count_lbl)
         lay.addLayout(tr)
 
-        # Event list (multi-select)
         self._list = QListWidget()
         self._list.setSelectionMode(QListWidget.ExtendedSelection)
         lay.addWidget(self._list)
 
-        # Bottom buttons
         bot = QHBoxLayout()
         bot.setSpacing(10)
 
         self._btn_del_ev = QPushButton("✕  DELETE SELECTED")
-        self._btn_del_ev.setStyleSheet(BTN_DELETE)
+        self._btn_del_ev.setStyleSheet(_btn_delete())
         self._btn_del_ev.setFixedHeight(34)
         self._btn_del_ev.setCursor(Qt.PointingHandCursor)
         self._btn_del_ev.setEnabled(False)
@@ -1014,14 +1086,14 @@ class ActionEditorDialog(QDialog):
         bot.addStretch()
 
         btn_cancel = QPushButton("Cancel")
-        btn_cancel.setStyleSheet(BTN_DELETE)
+        btn_cancel.setStyleSheet(_btn_delete())
         btn_cancel.setFixedHeight(34)
         btn_cancel.setCursor(Qt.PointingHandCursor)
         btn_cancel.clicked.connect(self.reject)
         bot.addWidget(btn_cancel)
 
         self._btn_save = QPushButton("Save Changes")
-        self._btn_save.setStyleSheet(BTN_DIALOG_OK)
+        self._btn_save.setStyleSheet(_btn_dialog_ok())
         self._btn_save.setFixedHeight(34)
         self._btn_save.setCursor(Qt.PointingHandCursor)
         self._btn_save.clicked.connect(self._on_save)
@@ -1035,7 +1107,6 @@ class ActionEditorDialog(QDialog):
 
         self._load_events()
 
-    # ── data ───────────────────────────────────────────────────────────────
     def _load_events(self):
         self._list.clear()
         try:
@@ -1089,7 +1160,6 @@ class ActionEditorDialog(QDialog):
         dur   = self._events[-1]['t'] if self._events else 0.0
         self._count_lbl.setText(f"{total} events  ·  {dur:.1f}s")
 
-    # ── actions ────────────────────────────────────────────────────────────
     def _on_delete_selected(self):
         rows = sorted(
             {self._list.row(it) for it in self._list.selectedItems()},
@@ -1113,12 +1183,11 @@ class ActionEditorDialog(QDialog):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Settings Dialog  (hotkeys + updates)
+# SettingsDialog
 # ─────────────────────────────────────────────────────────────────────────────
 class SettingsDialog(QDialog):
-    """Settings window with two sections: Hotkeys and Updates."""
     settings_saved = pyqtSignal()
-    install_update = pyqtSignal(str, str)   # (version, url)
+    install_update = pyqtSignal(str, str)
 
     def __init__(self, parent=None, settings: 'AppSettings' = None,
                  update_info: tuple = None):
@@ -1129,38 +1198,73 @@ class SettingsDialog(QDialog):
             'record_stop': settings.get('hotkey_record_stop') if settings else 'Key.f9',
             'play_toggle': settings.get('hotkey_play_toggle') if settings else 'Key.f10',
         }
+        self._pending_theme    = settings.get('theme') if settings else 'Phoenix Fire'
         self._capture_target   = None
         self._capture_listener = None
         self._upd_checker      = None
+        self._theme_btns: dict = {}
 
         self.setWindowTitle("Settings")
         self.setModal(True)
-        self.setFixedSize(480, 400)
+        self.setFixedSize(500, 480)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self.setStyleSheet(f"""
-            QDialog {{ background: #131313; border: 1px solid {BORDER}; }}
-            QLabel  {{ color: {TEXT}; font-size: 13px; background: transparent; }}
-            QFrame  {{ background: {SURF}; border: 1px solid {BORDER}; border-radius: 8px; }}
+            QDialog {{ background: {_c('SURF')}; border: 1px solid {_c('BORDER')}; }}
+            QLabel  {{ color: {_c('TEXT')}; font-size: 13px; background: transparent; }}
+            QFrame  {{ background: {_c('BG')}; border: 1px solid {_c('BORDER')};
+                       border-radius: 10px; }}
         """)
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(22, 18, 22, 18)
         lay.setSpacing(14)
 
-        # ── Title ──────────────────────────────────────────────────────────
+        # Title
         ttl = QLabel("⚙  SETTINGS")
         ttl.setStyleSheet(
-            f"color: {FIRE3}; font-size: 15px; font-weight: bold;"
+            f"color: {_c('ACCENT3')}; font-size: 15px; font-weight: bold;"
             f" letter-spacing: 3px; background: transparent;")
         lay.addWidget(ttl)
+
+        # ── Theme section ──────────────────────────────────────────────────
+        lay.addWidget(self._section_lbl("THEME"))
+        theme_frame = QFrame()
+        theme_frame.setStyleSheet(
+            f"QFrame {{ background: {_c('BG')}; border: 1px solid {_c('BORDER')};"
+            f" border-radius: 10px; }}"
+            f"QLabel {{ background: transparent; color: {_c('DIM')};"
+            f" font-size: 11px; border: none; }}")
+        tf_lay = QVBoxLayout(theme_frame)
+        tf_lay.setContentsMargins(14, 12, 14, 12)
+        tf_lay.setSpacing(8)
+
+        theme_row = QHBoxLayout()
+        theme_row.setSpacing(8)
+        for name, icons in [('Phoenix Fire', '🔥'), ('Midnight Ocean', '🌊'), ('Neon Storm', '⚡')]:
+            btn = QPushButton(f"{icons}  {name}")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setFixedHeight(34)
+            btn.clicked.connect(lambda _, n=name: self._select_theme(n))
+            self._theme_btns[name] = btn
+            theme_row.addWidget(btn)
+        tf_lay.addLayout(theme_row)
+
+        theme_hint = QLabel("Applies immediately when you click Apply.")
+        theme_hint.setStyleSheet(
+            f"color: {_c('DIM')}; font-size: 10px; letter-spacing: 1px;"
+            f" background: transparent; border: none;")
+        tf_lay.addWidget(theme_hint)
+        lay.addWidget(theme_frame)
+
+        self._refresh_theme_btns()
 
         # ── Hotkeys section ────────────────────────────────────────────────
         lay.addWidget(self._section_lbl("HOTKEYS"))
         hk = QFrame()
         hk.setStyleSheet(
-            f"QFrame {{ background: {SURF}; border: 1px solid {BORDER};"
-            f" border-radius: 8px; }}"
-            f"QLabel {{ background: transparent; color: {TEXT};"
+            f"QFrame {{ background: {_c('BG')}; border: 1px solid {_c('BORDER')};"
+            f" border-radius: 10px; }}"
+            f"QLabel {{ background: transparent; color: {_c('TEXT')};"
             f" font-size: 12px; border: none; }}")
         hk_lay = QVBoxLayout(hk)
         hk_lay.setContentsMargins(16, 12, 16, 12)
@@ -1184,7 +1288,7 @@ class SettingsDialog(QDialog):
 
         hint = QLabel("Click a key button, then press any keyboard key to rebind.")
         hint.setStyleSheet(
-            f"color: {DIM}; font-size: 10px; letter-spacing: 1px;"
+            f"color: {_c('DIM')}; font-size: 10px; letter-spacing: 1px;"
             f" background: transparent; border: none;")
         hk_lay.addWidget(hint)
         lay.addWidget(hk)
@@ -1193,9 +1297,9 @@ class SettingsDialog(QDialog):
         lay.addWidget(self._section_lbl("UPDATES"))
         upd = QFrame()
         upd.setStyleSheet(
-            f"QFrame {{ background: {SURF}; border: 1px solid {BORDER};"
-            f" border-radius: 8px; }}"
-            f"QLabel {{ background: transparent; color: {TEXT};"
+            f"QFrame {{ background: {_c('BG')}; border: 1px solid {_c('BORDER')};"
+            f" border-radius: 10px; }}"
+            f"QLabel {{ background: transparent; color: {_c('TEXT')};"
             f" font-size: 12px; border: none; }}")
         upd_lay = QVBoxLayout(upd)
         upd_lay.setContentsMargins(16, 12, 16, 12)
@@ -1206,36 +1310,35 @@ class SettingsDialog(QDialog):
         ver_row.addStretch()
         vl = QLabel(f"v{VERSION}")
         vl.setStyleSheet(
-            f"color: {FIRE3}; font-size: 12px; background: transparent; border: none;")
+            f"color: {_c('ACCENT3')}; font-size: 12px; background: transparent; border: none;")
         ver_row.addWidget(vl)
         upd_lay.addLayout(ver_row)
 
         chk_row = QHBoxLayout()
         self._upd_status = QLabel("—")
         self._upd_status.setStyleSheet(
-            f"color: {DIM}; font-size: 11px; background: transparent; border: none;")
+            f"color: {_c('DIM')}; font-size: 11px; background: transparent; border: none;")
         chk_row.addWidget(self._upd_status)
         chk_row.addStretch()
         self._btn_check = QPushButton("Check for Updates")
-        self._btn_check.setStyleSheet(BTN_UPDATE)
+        self._btn_check.setStyleSheet(_btn_update())
         self._btn_check.setFixedHeight(30)
         self._btn_check.setCursor(Qt.PointingHandCursor)
         self._btn_check.clicked.connect(self._on_check_updates)
         chk_row.addWidget(self._btn_check)
         upd_lay.addLayout(chk_row)
 
-        # Install row — visible only when update is found
         self._inst_widget = QWidget()
         self._inst_widget.setStyleSheet("background: transparent;")
         inst_row = QHBoxLayout(self._inst_widget)
         inst_row.setContentsMargins(0, 0, 0, 0)
         self._new_ver_lbl = QLabel("")
         self._new_ver_lbl.setStyleSheet(
-            f"color: {FIRE2}; font-size: 12px; background: transparent;")
+            f"color: {_c('ACCENT2')}; font-size: 12px; background: transparent;")
         inst_row.addWidget(self._new_ver_lbl)
         inst_row.addStretch()
         self._btn_install = QPushButton("↑  Install Update")
-        self._btn_install.setStyleSheet(BTN_DIALOG_OK)
+        self._btn_install.setStyleSheet(_btn_dialog_ok())
         self._btn_install.setFixedHeight(30)
         self._btn_install.setCursor(Qt.PointingHandCursor)
         self._btn_install.clicked.connect(self._on_install)
@@ -1246,20 +1349,20 @@ class SettingsDialog(QDialog):
         lay.addWidget(upd)
         lay.addStretch()
 
-        # ── Bottom buttons ─────────────────────────────────────────────────
+        # Bottom buttons
         bot = QHBoxLayout()
         bot.setSpacing(10)
         bot.addStretch()
 
         btn_cancel = QPushButton("Cancel")
-        btn_cancel.setStyleSheet(BTN_DELETE)
+        btn_cancel.setStyleSheet(_btn_delete())
         btn_cancel.setFixedHeight(36)
         btn_cancel.setCursor(Qt.PointingHandCursor)
         btn_cancel.clicked.connect(self._on_cancel)
         bot.addWidget(btn_cancel)
 
         btn_apply = QPushButton("Apply")
-        btn_apply.setStyleSheet(BTN_DIALOG_OK)
+        btn_apply.setStyleSheet(_btn_dialog_ok())
         btn_apply.setFixedHeight(36)
         btn_apply.setCursor(Qt.PointingHandCursor)
         btn_apply.clicked.connect(self._on_apply)
@@ -1267,21 +1370,33 @@ class SettingsDialog(QDialog):
 
         lay.addLayout(bot)
 
-        # Show known update immediately if parent already found one
         if update_info:
             self._show_update(update_info[0], update_info[1])
+
+    # ── theme selector ─────────────────────────────────────────────────────
+    def _select_theme(self, name: str):
+        self._pending_theme = name
+        self._refresh_theme_btns()
+
+    def _refresh_theme_btns(self):
+        for name, btn in self._theme_btns.items():
+            styles = _THEME_BTN_STYLES.get(name, {})
+            if name == self._pending_theme:
+                btn.setStyleSheet(styles.get('active', ''))
+            else:
+                btn.setStyleSheet(styles.get('idle', ''))
 
     # ── helpers ────────────────────────────────────────────────────────────
     def _section_lbl(self, text: str) -> QLabel:
         lbl = QLabel(text)
         lbl.setStyleSheet(
-            f"color: {FIRE2}; font-size: 10px; font-weight: bold;"
+            f"color: {_c('ACCENT2')}; font-size: 10px; font-weight: bold;"
             f" letter-spacing: 3px; background: transparent;")
         return lbl
 
     def _hotkey_btn(self, key_str: str, target_id: str) -> QPushButton:
         btn = QPushButton(key_to_display(key_str))
-        btn.setStyleSheet(BTN_LOOP_INACTIVE)
+        btn.setStyleSheet(_btn_loop_inactive())
         btn.setFixedSize(88, 28)
         btn.setCursor(Qt.PointingHandCursor)
         btn.setProperty("tid", target_id)
@@ -1294,7 +1409,7 @@ class SettingsDialog(QDialog):
             return
         self._capture_target = target_id
         btn.setText("Press a key…")
-        btn.setStyleSheet(BTN_LOOP_ACTIVE)
+        btn.setStyleSheet(_btn_loop_active())
 
         dlg = self
 
@@ -1307,7 +1422,7 @@ class SettingsDialog(QDialog):
             except Exception:
                 ks = str(key)
             QTimer.singleShot(0, lambda: dlg._apply_capture(ks, btn))
-            return False  # stop listener after first key
+            return False
 
         if HAS_PYNPUT:
             self._capture_listener = pk.Listener(on_press=on_press)
@@ -1315,7 +1430,7 @@ class SettingsDialog(QDialog):
             self._capture_listener.start()
         else:
             btn.setText(key_to_display(self._pending.get(target_id, '')))
-            btn.setStyleSheet(BTN_LOOP_INACTIVE)
+            btn.setStyleSheet(_btn_loop_inactive())
 
     def _apply_capture(self, key_str: str, btn: QPushButton):
         if self._capture_listener:
@@ -1327,7 +1442,7 @@ class SettingsDialog(QDialog):
         self._pending[self._capture_target] = key_str
         self._capture_target = None
         btn.setText(key_to_display(key_str))
-        btn.setStyleSheet(BTN_LOOP_INACTIVE)
+        btn.setStyleSheet(_btn_loop_inactive())
 
     # ── update check ───────────────────────────────────────────────────────
     def _on_check_updates(self):
@@ -1370,6 +1485,7 @@ class SettingsDialog(QDialog):
         if self._settings:
             self._settings.set('hotkey_record_stop', self._pending['record_stop'])
             self._settings.set('hotkey_play_toggle', self._pending['play_toggle'])
+            self._settings.set('theme', self._pending_theme)
             self._settings.save()
         self.settings_saved.emit()
         self.accept()
@@ -1398,32 +1514,30 @@ class PhoenixMacro(QMainWindow):
     def __init__(self):
         super().__init__()
         self._settings  = AppSettings()
+        _load_theme(self._settings.get('theme'))
+
         self._recorder  = Recorder() if HAS_PYNPUT else None
         self._player: Player | None = None
         self._recording = False
         self._playing   = False
         self._tick_t0   = 0.0
-        self._update_info: tuple | None = None   # (version, url) when update found
+        self._update_info: tuple | None = None
 
-        # Loop / repeat state
-        self._loop_count        = 1    # how many times to run (0 = infinite)
-        self._loop_current      = 0    # iterations completed so far
-        self._start_delay_s     = 3    # countdown seconds before first play
-        self._loop_delay_s      = 0    # pause seconds between loops
+        self._loop_count        = 1
+        self._loop_current      = 0
+        self._start_delay_s     = 3
+        self._loop_delay_s      = 0
         self._loop_aborted      = False
         self._current_script    = ""
 
-        # Countdown timer (1-second ticks for the start/loop-gap delay)
         self._countdown_val   = 0
         self._countdown_timer = QTimer(self)
         self._countdown_timer.setInterval(1000)
         self._countdown_timer.timeout.connect(self._countdown_tick)
 
-        # Single 200 ms tick drives recording timer and playback timer
         self._ticker = QTimer(self)
         self._ticker.timeout.connect(self._tick)
 
-        # Blink timer for the recording dot indicator
         self._blink_timer = QTimer(self)
         self._blink_timer.timeout.connect(self._blink)
         self._blink_on = True
@@ -1440,147 +1554,308 @@ class PhoenixMacro(QMainWindow):
         self._build_ui()
         self._refresh_scripts()
 
-        # Check for updates in the background — does not block startup
         self._downloader: Downloader | None = None
         self._upd_checker = UpdateChecker()
         self._upd_checker.update_available.connect(self._on_update_available)
         self._upd_checker.start()
 
     # ── UI Construction ────────────────────────────────────────────────────
+
     def _build_ui(self):
         self.setWindowTitle("Phoenix Macro")
-        self.setMinimumSize(580, 720)
-        self.resize(600, 780)
-        self.setStyleSheet(APP_STYLE)
+        self.setMinimumSize(860, 500)
+        self.resize(960, 560)
+        self.setStyleSheet(_app_style())
         self.setWindowIcon(self._make_icon())
 
-        root = QWidget()
-        root.setObjectName("root")
-        self.setCentralWidget(root)
+        self._root = QWidget()
+        self._root.setObjectName("root")
+        self._root.setStyleSheet(
+            f"QWidget#root {{ background: qlineargradient("
+            f"x1:0,y1:0,x2:1,y2:1, stop:0 {_c('BG_TOP')},"
+            f" stop:0.5 {_c('BG_MID')}, stop:1 {_c('BG')}); }}")
+        self.setCentralWidget(self._root)
 
-        vbox = QVBoxLayout(root)
+        vbox = QVBoxLayout(self._root)
         vbox.setContentsMargins(0, 0, 0, 0)
         vbox.setSpacing(0)
 
-        # ── Header ─────────────────────────────────────────────────────────
-        vbox.addWidget(self._build_header())
+        # Full-width header
+        self._header = self._build_header()
+        vbox.addWidget(self._header)
 
-        # ── Content area ───────────────────────────────────────────────────
-        content = QWidget()
-        cl = QVBoxLayout(content)
-        cl.setContentsMargins(24, 20, 24, 24)
-        cl.setSpacing(14)
+        # Main horizontal split
+        body = QWidget()
+        body.setStyleSheet("background: transparent;")
+        body_lay = QHBoxLayout(body)
+        body_lay.setContentsMargins(16, 14, 16, 16)
+        body_lay.setSpacing(14)
 
-        # Status card
-        self._status_card = self._build_status_card()
-        cl.addWidget(self._status_card)
+        # Left panel (script library) — stretch 3
+        self._left_frame = self._build_left_panel()
+        body_lay.addWidget(self._left_frame, 3)
 
-        # CREATE / RECORD button
-        self._btn_create = QPushButton("⬤   CREATE SCRIPT")
-        self._btn_create.setStyleSheet(BTN_CREATE_IDLE)
-        self._btn_create.setMinimumHeight(54)
-        self._btn_create.setCursor(Qt.PointingHandCursor)
-        self._btn_create.clicked.connect(self._on_create)
-        cl.addWidget(self._btn_create)
+        # Right panel (controls) — stretch 2
+        self._right_frame = self._build_right_panel()
+        body_lay.addWidget(self._right_frame, 2)
 
-        # Hint below Create button (text updated when hotkeys are changed)
-        stop_key = key_to_display(self._settings.get('hotkey_record_stop'))
-        play_key = key_to_display(self._settings.get('hotkey_play_toggle'))
-        self._hint_lbl = QLabel(
-            f"{stop_key} — stop recording   ·   {play_key} — start / stop script")
-        self._hint_lbl.setAlignment(Qt.AlignCenter)
-        self._hint_lbl.setStyleSheet(
-            f"color: {DIM}; font-size: 10px; letter-spacing: 1px; padding: 0;")
-        cl.addWidget(self._hint_lbl)
+        vbox.addWidget(body, 1)
 
-        # Divider
-        cl.addWidget(self._divider("SAVED SCRIPTS"))
+    def _build_header(self) -> QWidget:
+        hdr = QWidget()
+        hdr.setObjectName("hdr")
+        hdr.setFixedHeight(76)
+        hdr.setStyleSheet(f"""
+            QWidget#hdr {{
+                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 {_c('BG_TOP')}, stop:1 {_c('BG_MID')});
+                border-bottom: 1px solid {_c('BORDER')};
+            }}
+        """)
+        lay = QHBoxLayout(hdr)
+        lay.setContentsMargins(22, 0, 18, 0)
+        lay.setSpacing(14)
 
-        # Search box
+        # Flame emoji
+        flame = QLabel("🔥")
+        flame.setStyleSheet("font-size: 28px; background: transparent;")
+        lay.addWidget(flame)
+
+        # Title block
+        title_col = QVBoxLayout()
+        title_col.setSpacing(1)
+
+        title = QLabel("PHOENIX MACRO")
+        title.setStyleSheet(f"""
+            color: {_c('ACCENT3')};
+            font-size: 20px;
+            font-weight: bold;
+            letter-spacing: 5px;
+            background: transparent;
+        """)
+        title_col.addWidget(title)
+
+        sub = QLabel("MOUSE  &  KEYBOARD  RECORDER")
+        sub.setStyleSheet(f"""
+            color: {_c('DIM')};
+            font-size: 9px;
+            letter-spacing: 3px;
+            background: transparent;
+        """)
+        title_col.addWidget(sub)
+
+        lay.addLayout(title_col)
+        lay.addStretch()
+
+        # Version badge
+        ver_lbl = QLabel(f"v{VERSION}")
+        ver_lbl.setStyleSheet(f"""
+            color: {_c('DIM')};
+            font-size: 10px;
+            background: transparent;
+            padding: 2px 8px;
+            border: 1px solid {_c('BORDER')};
+            border-radius: 6px;
+        """)
+        lay.addWidget(ver_lbl)
+
+        # Settings button
+        self._btn_settings = QPushButton("⚙")
+        self._btn_settings.setToolTip("Settings")
+        self._btn_settings.setStyleSheet(self._settings_btn_style())
+        self._btn_settings.setCursor(Qt.PointingHandCursor)
+        self._btn_settings.clicked.connect(self._open_settings)
+        lay.addWidget(self._btn_settings)
+
+        return hdr
+
+    def _settings_btn_style(self) -> str:
+        return f"""
+            QPushButton {{
+                background: transparent;
+                color: {_c('DIM')};
+                border: 1px solid {_c('BORDER')};
+                border-radius: 10px;
+                font-size: 18px;
+                padding: 2px 12px;
+            }}
+            QPushButton:hover {{
+                color: {_c('ACCENT3')};
+                border-color: {_c('ACCENT2')};
+                background: {_c('SURF2')};
+            }}
+            QPushButton:pressed {{
+                background: {_c('BTN2B')};
+            }}
+        """
+
+    def _panel_style(self) -> str:
+        return f"""
+            QFrame {{
+                background: {_c('SURF')};
+                border: 1px solid {_c('BORDER')};
+                border-radius: 14px;
+            }}
+        """
+
+    def _build_left_panel(self) -> QFrame:
+        frame = QFrame()
+        frame.setStyleSheet(self._panel_style())
+        lay = QVBoxLayout(frame)
+        lay.setContentsMargins(14, 14, 14, 14)
+        lay.setSpacing(10)
+
+        # ── Panel header row: title + script count badge ───────────────────
+        hrow = QHBoxLayout()
+        hrow.setSpacing(8)
+
+        panel_title = QLabel("SCRIPT LIBRARY")
+        panel_title.setStyleSheet(f"""
+            color: {_c('ACCENT2')};
+            font-size: 10px;
+            font-weight: bold;
+            letter-spacing: 3px;
+            background: transparent;
+        """)
+        hrow.addWidget(panel_title)
+        hrow.addStretch()
+
+        self._script_count_badge = QLabel("0 scripts")
+        self._script_count_badge.setStyleSheet(f"""
+            color: {_c('DIM')};
+            font-size: 10px;
+            background: {_c('SURF2')};
+            border: 1px solid {_c('BORDER')};
+            border-radius: 8px;
+            padding: 2px 8px;
+        """)
+        hrow.addWidget(self._script_count_badge)
+        lay.addLayout(hrow)
+
+        # ── Search box ─────────────────────────────────────────────────────
         self._search_inp = QLineEdit()
         self._search_inp.setPlaceholderText("Search scripts…")
         self._search_inp.setClearButtonEnabled(True)
         self._search_inp.setFixedHeight(32)
         self._search_inp.setStyleSheet(f"""
             QLineEdit {{
-                background: {SURF};
-                color: {TEXT};
-                border: 1px solid {BORDER};
-                border-radius: 6px;
+                background: {_c('BG')};
+                color: {_c('TEXT')};
+                border: 1px solid {_c('BORDER')};
+                border-radius: 10px;
                 padding: 0 10px;
                 font-size: 12px;
-                selection-background-color: {FIRE1};
+                selection-background-color: {_c('ACCENT1')};
             }}
-            QLineEdit:focus {{ border-color: {FIRE2}; }}
+            QLineEdit:focus {{ border-color: {_c('ACCENT2')}; }}
         """)
         self._search_inp.textChanged.connect(self._on_search_changed)
-        cl.addWidget(self._search_inp)
+        lay.addWidget(self._search_inp)
 
-        # Script list
+        # ── Script list ────────────────────────────────────────────────────
         self._list = QListWidget()
-        self._list.setMinimumHeight(160)
+        self._list.setMinimumHeight(120)
         self._list.itemSelectionChanged.connect(self._on_sel_changed)
         self._list.itemDoubleClicked.connect(self._on_rename_script)
-        cl.addWidget(self._list)
+        lay.addWidget(self._list, 1)
 
-        # Script meta info
+        # ── Meta info ──────────────────────────────────────────────────────
         self._meta_lbl = QLabel("")
-        self._meta_lbl.setStyleSheet(f"color: {DIM}; font-size: 11px; padding: 0 4px;")
-        cl.addWidget(self._meta_lbl)
+        self._meta_lbl.setStyleSheet(
+            f"color: {_c('DIM')}; font-size: 11px; "
+            f"padding: 2px 4px; background: transparent;")
+        lay.addWidget(self._meta_lbl)
 
-        # ── Loop / delay panel ─────────────────────────────────────────────
-        self._loop_panel = self._build_loop_panel()
-        cl.addWidget(self._loop_panel)
-
-        # START / STOP PLAYBACK button
-        self._btn_start = QPushButton("▶   START SCRIPT")
-        self._btn_start.setStyleSheet(BTN_START_IDLE)
-        self._btn_start.setMinimumHeight(54)
-        self._btn_start.setCursor(Qt.PointingHandCursor)
-        self._btn_start.setEnabled(False)
-        self._btn_start.clicked.connect(self._on_start)
-        cl.addWidget(self._btn_start)
-
-        # Bottom row: delete + edit + progress
+        # ── Bottom action row ──────────────────────────────────────────────
         bot = QHBoxLayout()
-        bot.setSpacing(12)
+        bot.setSpacing(8)
 
         self._btn_del = QPushButton("✕  DELETE")
-        self._btn_del.setStyleSheet(BTN_DELETE)
-        self._btn_del.setMinimumHeight(36)
+        self._btn_del.setStyleSheet(_btn_delete())
+        self._btn_del.setMinimumHeight(34)
         self._btn_del.setCursor(Qt.PointingHandCursor)
         self._btn_del.setEnabled(False)
         self._btn_del.clicked.connect(self._on_delete)
         bot.addWidget(self._btn_del)
 
         self._btn_edit = QPushButton("✎  EDIT SCRIPT")
-        self._btn_edit.setStyleSheet(BTN_DELETE)
-        self._btn_edit.setMinimumHeight(36)
+        self._btn_edit.setStyleSheet(_btn_delete())
+        self._btn_edit.setMinimumHeight(34)
         self._btn_edit.setCursor(Qt.PointingHandCursor)
         self._btn_edit.setEnabled(False)
         self._btn_edit.clicked.connect(self._on_edit_script)
         bot.addWidget(self._btn_edit)
 
         bot.addStretch()
+        lay.addLayout(bot)
+
+        return frame
+
+    def _build_right_panel(self) -> QFrame:
+        frame = QFrame()
+        frame.setStyleSheet(self._panel_style())
+        lay = QVBoxLayout(frame)
+        lay.setContentsMargins(14, 14, 14, 14)
+        lay.setSpacing(10)
+
+        # ── Status card ────────────────────────────────────────────────────
+        self._status_card = self._build_status_card()
+        lay.addWidget(self._status_card)
+
+        # ── CREATE button ──────────────────────────────────────────────────
+        self._btn_create = QPushButton("⬤   CREATE SCRIPT")
+        self._btn_create.setStyleSheet(_btn_create_idle())
+        self._btn_create.setMinimumHeight(50)
+        self._btn_create.setCursor(Qt.PointingHandCursor)
+        self._btn_create.clicked.connect(self._on_create)
+        lay.addWidget(self._btn_create)
+
+        # ── Loop / delay panel ─────────────────────────────────────────────
+        self._loop_panel = self._build_loop_panel()
+        lay.addWidget(self._loop_panel)
+
+        # ── START button ───────────────────────────────────────────────────
+        self._btn_start = QPushButton("▶   START SCRIPT")
+        self._btn_start.setStyleSheet(_btn_start_idle())
+        self._btn_start.setMinimumHeight(50)
+        self._btn_start.setCursor(Qt.PointingHandCursor)
+        self._btn_start.setEnabled(False)
+        self._btn_start.clicked.connect(self._on_start)
+        lay.addWidget(self._btn_start)
+
+        # ── Hint + progress row ────────────────────────────────────────────
+        hint_row = QHBoxLayout()
+        stop_key = key_to_display(self._settings.get('hotkey_record_stop'))
+        play_key = key_to_display(self._settings.get('hotkey_play_toggle'))
+        self._hint_lbl = QLabel(
+            f"{stop_key} — stop rec   ·   {play_key} — play / stop")
+        self._hint_lbl.setAlignment(Qt.AlignLeft)
+        self._hint_lbl.setStyleSheet(
+            f"color: {_c('DIM')}; font-size: 10px; "
+            f"letter-spacing: 1px; background: transparent;")
+        hint_row.addWidget(self._hint_lbl)
+        hint_row.addStretch()
 
         self._prog_lbl = QLabel("")
-        self._prog_lbl.setStyleSheet(f"color: {DIM}; font-size: 11px;")
-        bot.addWidget(self._prog_lbl)
+        self._prog_lbl.setStyleSheet(
+            f"color: {_c('ACCENT2')}; font-size: 11px; background: transparent;")
+        hint_row.addWidget(self._prog_lbl)
+        lay.addLayout(hint_row)
 
-        cl.addLayout(bot)
-        vbox.addWidget(content)
+        lay.addStretch()
+
+        return frame
 
     def _build_loop_panel(self) -> QFrame:
-        """Compact panel for repeat count, start delay and between-loop delay."""
         panel = QFrame()
         panel.setStyleSheet(f"""
             QFrame {{
-                background: {SURF};
-                border: 1px solid {BORDER};
-                border-radius: 8px;
+                background: {_c('BG')};
+                border: 1px solid {_c('BORDER')};
+                border-radius: 10px;
             }}
             QLabel {{
-                color: {DIM};
+                color: {_c('DIM')};
                 font-size: 10px;
                 font-weight: bold;
                 letter-spacing: 2px;
@@ -1592,7 +1867,7 @@ class PhoenixMacro(QMainWindow):
         pl.setContentsMargins(12, 9, 12, 9)
         pl.setSpacing(7)
 
-        # ── Row 1: REPEAT count ────────────────────────────────────────────
+        # REPEAT row
         r1 = QHBoxLayout()
         r1.setSpacing(5)
         r1.addWidget(QLabel("REPEAT"))
@@ -1609,7 +1884,7 @@ class PhoenixMacro(QMainWindow):
         r1.addStretch()
         pl.addLayout(r1)
 
-        # ── Row 2: START IN + LOOP GAP ─────────────────────────────────────
+        # START IN + LOOP GAP row
         r2 = QHBoxLayout()
         r2.setSpacing(5)
         r2.addWidget(QLabel("START IN"))
@@ -1626,7 +1901,7 @@ class PhoenixMacro(QMainWindow):
 
         sep = QLabel("·")
         sep.setStyleSheet(
-            f"color: {BORDER}; font-size: 14px; background: transparent;"
+            f"color: {_c('BORDER')}; font-size: 14px; background: transparent;"
             f" padding: 0 6px; letter-spacing: 0px;")
         r2.addWidget(sep)
 
@@ -1644,121 +1919,36 @@ class PhoenixMacro(QMainWindow):
         r2.addStretch()
         pl.addLayout(r2)
 
-        # Apply defaults (×1, START IN 3s, LOOP GAP 0s)
         self._set_loop_count(1)
         self._set_start_delay(3)
         self._set_loop_delay(0)
 
         return panel
 
-    def _build_header(self) -> QWidget:
-        hdr = QWidget()
-        hdr.setFixedHeight(115)
-        hdr.setStyleSheet(f"""
-            background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-                stop:0 #1e0900, stop:0.6 #0f0400, stop:1 {BG});
-            border-bottom: 1px solid {BORDER};
-        """)
-        layout = QVBoxLayout(hdr)
-        layout.setContentsMargins(26, 14, 26, 10)
-        layout.setSpacing(6)
-
-        # Top row: flame icon + title + flame icon
-        top = QHBoxLayout()
-        top.setSpacing(14)
-
-        lflame = QLabel("🔥")
-        lflame.setStyleSheet("font-size: 30px; background: transparent;")
-        top.addWidget(lflame)
-
-        title_col = QVBoxLayout()
-        title_col.setSpacing(1)
-
-        title = QLabel("PHOENIX MACRO")
-        title.setStyleSheet(f"""
-            color: {FIRE3};
-            font-size: 22px;
-            font-weight: bold;
-            letter-spacing: 5px;
-            background: transparent;
-        """)
-        title_col.addWidget(title)
-
-        sub = QLabel("MOUSE  &  KEYBOARD  RECORDER")
-        sub.setStyleSheet(f"""
-            color: {DIM};
-            font-size: 10px;
-            letter-spacing: 3px;
-            background: transparent;
-        """)
-        title_col.addWidget(sub)
-
-        top.addLayout(title_col)
-        top.addStretch()
-
-        self._btn_settings = QPushButton("⚙")
-        self._btn_settings.setToolTip("Settings")
-        self._btn_settings.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent;
-                color: {DIM};
-                border: 1px solid {BORDER};
-                border-radius: 7px;
-                font-size: 18px;
-                padding: 2px 10px;
-            }}
-            QPushButton:hover {{
-                color: {FIRE3};
-                border-color: {FIRE2};
-                background: #1a0d00;
-            }}
-            QPushButton:pressed {{
-                background: #2d1800;
-            }}
-        """)
-        self._btn_settings.setCursor(Qt.PointingHandCursor)
-        self._btn_settings.clicked.connect(self._open_settings)
-        top.addWidget(self._btn_settings)
-
-        layout.addLayout(top)
-
-        # Decorative divider
-        deco = QLabel("━━━━ 🔥 ━━━ 🔥 ━━━ 🔥 ━━━━")
-        deco.setAlignment(Qt.AlignCenter)
-        deco.setStyleSheet(f"""
-            color: {FIRE1};
-            font-size: 10px;
-            letter-spacing: 4px;
-            background: transparent;
-        """)
-        layout.addWidget(deco)
-
-        return hdr
-
     def _build_status_card(self) -> QFrame:
         card = QFrame()
         card.setStyleSheet(f"""
             QFrame {{
-                background-color: {SURF};
-                border: 1px solid {BORDER};
+                background: {_c('BG')};
+                border: 1px solid {_c('BORDER')};
                 border-radius: 10px;
             }}
         """)
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(16, 12, 18, 12)
-        layout.setSpacing(12)
+        layout.setContentsMargins(14, 10, 16, 10)
+        layout.setSpacing(10)
 
-        # Blinking dot
         self._dot = QLabel("●")
-        self._dot.setStyleSheet(f"color: {DIM}; font-size: 16px; background: transparent;")
+        self._dot.setStyleSheet(
+            f"color: {_c('DIM')}; font-size: 16px; background: transparent;")
         layout.addWidget(self._dot)
 
         col = QVBoxLayout()
-        col.setSpacing(3)
+        col.setSpacing(2)
 
         self._status_lbl = QLabel("IDLE")
         self._status_lbl.setStyleSheet(f"""
-            color: {TEXT};
+            color: {_c('TEXT')};
             font-size: 13px;
             font-weight: bold;
             letter-spacing: 2px;
@@ -1768,7 +1958,7 @@ class PhoenixMacro(QMainWindow):
 
         self._status_detail = QLabel("Ready to record")
         self._status_detail.setStyleSheet(f"""
-            color: {DIM};
+            color: {_c('DIM')};
             font-size: 11px;
             background: transparent;
         """)
@@ -1776,10 +1966,9 @@ class PhoenixMacro(QMainWindow):
         layout.addLayout(col)
         layout.addStretch()
 
-        # Elapsed timer display
         self._timer_lbl = QLabel("00:00")
         self._timer_lbl.setStyleSheet(f"""
-            color: {DIM};
+            color: {_c('DIM')};
             font-size: 22px;
             font-family: 'Courier New', Consolas, monospace;
             font-weight: bold;
@@ -1789,29 +1978,106 @@ class PhoenixMacro(QMainWindow):
 
         return card
 
-    @staticmethod
-    def _divider(text: str) -> QWidget:
-        w = QWidget()
-        h = QHBoxLayout(w)
-        h.setContentsMargins(0, 6, 0, 2)
-        h.setSpacing(8)
+    # ── Apply theme styles (called when theme changes in settings) ─────────
 
-        for side in range(2):
-            ln = QFrame()
-            ln.setFrameShape(QFrame.HLine)
-            h.addWidget(ln, 1)
-            if side == 0:
-                lbl = QLabel(text)
-                lbl.setStyleSheet(f"""
-                    color: {FIRE2};
-                    font-size: 10px;
-                    font-weight: bold;
-                    letter-spacing: 3px;
-                    background: transparent;
-                    padding: 0 6px;
-                """)
-                h.addWidget(lbl)
-        return w
+    def _apply_theme_styles(self):
+        _load_theme(self._settings.get('theme'))
+
+        self.setStyleSheet(_app_style())
+        self._root.setStyleSheet(
+            f"QWidget#root {{ background: qlineargradient("
+            f"x1:0,y1:0,x2:1,y2:1, stop:0 {_c('BG_TOP')},"
+            f" stop:0.5 {_c('BG_MID')}, stop:1 {_c('BG')}); }}")
+
+        # Header
+        self._header.setStyleSheet(f"""
+            QWidget#hdr {{
+                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 {_c('BG_TOP')}, stop:1 {_c('BG_MID')});
+                border-bottom: 1px solid {_c('BORDER')};
+            }}
+        """)
+
+        # Panels
+        self._left_frame.setStyleSheet(self._panel_style())
+        self._right_frame.setStyleSheet(self._panel_style())
+
+        # Status card + loop panel inner backgrounds
+        self._status_card.setStyleSheet(f"""
+            QFrame {{ background: {_c('BG')}; border: 1px solid {_c('BORDER')};
+                      border-radius: 10px; }}
+        """)
+        self._loop_panel.setStyleSheet(f"""
+            QFrame {{ background: {_c('BG')}; border: 1px solid {_c('BORDER')};
+                      border-radius: 10px; }}
+            QLabel {{ color: {_c('DIM')}; font-size: 10px; font-weight: bold;
+                      letter-spacing: 2px; background: transparent; padding: 0; }}
+        """)
+
+        # Buttons — re-apply based on current state
+        self._btn_create.setStyleSheet(
+            _btn_create_rec() if self._recording else _btn_create_idle())
+        playing_or_cd = self._playing or self._countdown_val > 0
+        self._btn_start.setStyleSheet(
+            _btn_start_playing() if playing_or_cd else _btn_start_idle())
+        self._btn_del.setStyleSheet(_btn_delete())
+        self._btn_edit.setStyleSheet(_btn_delete())
+        self._btn_settings.setStyleSheet(self._settings_btn_style())
+
+        # Status labels
+        self._dot.setStyleSheet(
+            f"color: {_c('DIM')}; font-size: 16px; background: transparent;")
+        self._status_lbl.setStyleSheet(f"""
+            color: {_c('TEXT')}; font-size: 13px; font-weight: bold;
+            letter-spacing: 2px; background: transparent;
+        """)
+        self._status_detail.setStyleSheet(
+            f"color: {_c('DIM')}; font-size: 11px; background: transparent;")
+        self._timer_lbl.setStyleSheet(f"""
+            color: {_c('DIM')}; font-size: 22px;
+            font-family: 'Courier New', Consolas, monospace;
+            font-weight: bold; background: transparent;
+        """)
+        self._meta_lbl.setStyleSheet(
+            f"color: {_c('DIM')}; font-size: 11px; "
+            f"padding: 2px 4px; background: transparent;")
+        self._hint_lbl.setStyleSheet(
+            f"color: {_c('DIM')}; font-size: 10px; "
+            f"letter-spacing: 1px; background: transparent;")
+        self._prog_lbl.setStyleSheet(
+            f"color: {_c('ACCENT2')}; font-size: 11px; background: transparent;")
+
+        # Script count badge
+        self._script_count_badge.setStyleSheet(f"""
+            color: {_c('DIM')}; font-size: 10px;
+            background: {_c('SURF2')}; border: 1px solid {_c('BORDER')};
+            border-radius: 8px; padding: 2px 8px;
+        """)
+
+        # Search input
+        self._search_inp.setStyleSheet(f"""
+            QLineEdit {{
+                background: {_c('BG')};
+                color: {_c('TEXT')};
+                border: 1px solid {_c('BORDER')};
+                border-radius: 10px;
+                padding: 0 10px;
+                font-size: 12px;
+                selection-background-color: {_c('ACCENT1')};
+            }}
+            QLineEdit:focus {{ border-color: {_c('ACCENT2')}; }}
+        """)
+
+        # Loop toggle buttons
+        for btn in self._loop_btns:
+            active = btn.property("lv") == self._loop_count
+            btn.setStyleSheet(_btn_loop_active() if active else _btn_loop_inactive())
+        for btn in self._start_delay_btns:
+            active = btn.property("sv") == self._start_delay_s
+            btn.setStyleSheet(_btn_loop_active() if active else _btn_loop_inactive())
+        for btn in self._loop_delay_btns:
+            active = btn.property("dv") == self._loop_delay_s
+            btn.setStyleSheet(_btn_loop_active() if active else _btn_loop_inactive())
 
     # ── Icon ───────────────────────────────────────────────────────────────
     @staticmethod
@@ -1819,7 +2085,6 @@ class PhoenixMacro(QMainWindow):
         ico_path = str(BUNDLE_DIR / "phoenix.ico")
         if os.path.isfile(ico_path):
             return QIcon(ico_path)
-        # Fallback: painted flame shape (no ico file present)
         px = QPixmap(64, 64)
         px.fill(Qt.transparent)
         p = QPainter(px)
@@ -1844,26 +2109,25 @@ class PhoenixMacro(QMainWindow):
     def _set_loop_count(self, n: int):
         self._loop_count = n
         for btn in self._loop_btns:
-            btn.setStyleSheet(BTN_LOOP_ACTIVE if btn.property("lv") == n
-                              else BTN_LOOP_INACTIVE)
+            btn.setStyleSheet(_btn_loop_active() if btn.property("lv") == n
+                              else _btn_loop_inactive())
 
     def _set_start_delay(self, s: int):
         self._start_delay_s = s
         for btn in self._start_delay_btns:
-            btn.setStyleSheet(BTN_LOOP_ACTIVE if btn.property("sv") == s
-                              else BTN_LOOP_INACTIVE)
+            btn.setStyleSheet(_btn_loop_active() if btn.property("sv") == s
+                              else _btn_loop_inactive())
 
     def _set_loop_delay(self, s: int):
         self._loop_delay_s = s
         for btn in self._loop_delay_btns:
-            btn.setStyleSheet(BTN_LOOP_ACTIVE if btn.property("dv") == s
-                              else BTN_LOOP_INACTIVE)
+            btn.setStyleSheet(_btn_loop_active() if btn.property("dv") == s
+                              else _btn_loop_inactive())
 
     # ── Timer / Blink ──────────────────────────────────────────────────────
     def _tick(self):
-        """Update elapsed-time display every 200 ms while recording or playing."""
         if self._countdown_val > 0:
-            return  # countdown UI managed by _countdown_tick
+            return
         elapsed = int(time.time() - self._tick_t0)
         m, s = divmod(elapsed, 60)
         self._timer_lbl.setText(f"{m:02d}:{s:02d}")
@@ -1873,7 +2137,7 @@ class PhoenixMacro(QMainWindow):
 
     def _blink(self):
         self._blink_on = not self._blink_on
-        colour = RED_ACT if self._blink_on else "#550000"
+        colour = _c('STATE1') if self._blink_on else _c('STATE1_DARK')
         self._dot.setStyleSheet(
             f"color: {colour}; font-size: 16px; background: transparent;")
 
@@ -1898,7 +2162,9 @@ class PhoenixMacro(QMainWindow):
             item.setData(Qt.UserRole + 1, meta)
             self._list.addItem(item)
 
-        self._on_search_changed()  # apply active filter and update buttons
+        n = self._list.count()
+        self._script_count_badge.setText(f"{n} script{'s' if n != 1 else ''}")
+        self._on_search_changed()
 
     def _on_sel_changed(self):
         sel = bool(self._list.selectedItems())
@@ -1977,7 +2243,6 @@ class PhoenixMacro(QMainWindow):
                 "pynput is not installed.\n\n"
                 "Run:  pip install pynput\nthen restart Phoenix Macro.")
             return
-
         if not self._recording:
             self._start_recording()
         else:
@@ -1991,22 +2256,22 @@ class PhoenixMacro(QMainWindow):
         self._blink_timer.start(500)
 
         self._btn_create.setText("⬛   STOP RECORDING")
-        self._btn_create.setStyleSheet(BTN_CREATE_REC)
+        self._btn_create.setStyleSheet(_btn_create_rec())
         self._btn_start.setEnabled(False)
         self._btn_del.setEnabled(False)
         self._btn_edit.setEnabled(False)
         self._loop_panel.setEnabled(False)
         self._status_lbl.setText("RECORDING")
         self._status_lbl.setStyleSheet(
-            f"color: {RED_ACT}; font-size: 13px; font-weight: bold;"
+            f"color: {_c('STATE1')}; font-size: 13px; font-weight: bold;"
             f" letter-spacing: 2px; background: transparent;")
         self._status_detail.setText("0 events captured")
         self._timer_lbl.setStyleSheet(
-            f"color: {FIRE2}; font-size: 22px; font-family: 'Courier New',"
-            f" Consolas, monospace; font-weight: bold; background: transparent;")
+            f"color: {_c('ACCENT2')}; font-size: 22px;"
+            f" font-family: 'Courier New', Consolas, monospace;"
+            f" font-weight: bold; background: transparent;")
 
     def _stop_recording(self):
-        """Stop recording and prompt the user to name the script."""
         if not self._recording:
             return
         self._recording = False
@@ -2038,9 +2303,8 @@ class PhoenixMacro(QMainWindow):
 
         self._reset_ui()
 
-    # ── Playback — start / stop ────────────────────────────────────────────
+    # ── Playback ───────────────────────────────────────────────────────────
     def _on_start(self):
-        """START button and F10 handler — toggles playback (with countdown)."""
         if self._playing or self._countdown_val > 0:
             self._cancel_all()
             return
@@ -2060,39 +2324,34 @@ class PhoenixMacro(QMainWindow):
         self._begin_countdown(initial=True)
 
     def _on_f10(self):
-        """Global F10 hotkey — toggle playback from any window."""
         if self._recording:
-            return  # don't interfere with active recording
+            return
         self._on_start()
 
     def _cancel_all(self):
-        """Abort countdown and/or playback, return to idle."""
         self._loop_aborted = True
         self._countdown_timer.stop()
         self._countdown_val = 0
         if self._playing and self._player:
             self._player.stop()
-            # _on_play_done will see _loop_aborted=True and call _reset_ui
         else:
-            # Cancelled during countdown, no player running
             self._ticker.stop()
             self._reset_ui()
 
     # ── Countdown ──────────────────────────────────────────────────────────
     def _begin_countdown(self, initial: bool):
-        """Start a countdown before (initial=True) or between loops."""
         delay = self._start_delay_s if initial else self._loop_delay_s
 
-        # Lock the UI into "active" state
         self._btn_start.setText("⬛   STOP")
-        self._btn_start.setStyleSheet(BTN_START_PLAYING)
+        self._btn_start.setStyleSheet(_btn_start_playing())
         self._btn_start.setEnabled(True)
         self._btn_create.setEnabled(False)
         self._btn_del.setEnabled(False)
         self._loop_panel.setEnabled(False)
         self._timer_lbl.setStyleSheet(
-            f"color: {FIRE2}; font-size: 22px; font-family: 'Courier New',"
-            f" Consolas, monospace; font-weight: bold; background: transparent;")
+            f"color: {_c('ACCENT2')}; font-size: 22px;"
+            f" font-family: 'Courier New', Consolas, monospace;"
+            f" font-weight: bold; background: transparent;")
 
         if delay <= 0:
             self._start_playback_now()
@@ -2116,7 +2375,7 @@ class PhoenixMacro(QMainWindow):
     def _update_countdown_ui(self):
         self._status_lbl.setText("STARTING")
         self._status_lbl.setStyleSheet(
-            f"color: {FIRE2}; font-size: 13px; font-weight: bold;"
+            f"color: {_c('ACCENT2')}; font-size: 13px; font-weight: bold;"
             f" letter-spacing: 2px; background: transparent;")
         loop_hint = self._loop_hint(next_loop=True)
         detail = f"{loop_hint}  ·  " if loop_hint else ""
@@ -2124,14 +2383,12 @@ class PhoenixMacro(QMainWindow):
         self._timer_lbl.setText(f"  {self._countdown_val}s")
 
     def _loop_hint(self, next_loop: bool = False) -> str:
-        """Return e.g. 'Loop 2/5' or 'Loop 3/∞' or '' when only 1 run."""
         if self._loop_count == 1:
             return ""
         idx = self._loop_current + (1 if next_loop else 0)
         total = "∞" if self._loop_count == 0 else str(self._loop_count)
         return f"Loop {idx}/{total}"
 
-    # ── Playback ───────────────────────────────────────────────────────────
     def _start_playback_now(self):
         self._loop_current += 1
         self._playing  = True
@@ -2142,15 +2399,16 @@ class PhoenixMacro(QMainWindow):
         hint = self._loop_hint()
         self._status_lbl.setText("PLAYING")
         self._status_lbl.setStyleSheet(
-            f"color: {FIRE3}; font-size: 13px; font-weight: bold;"
+            f"color: {_c('ACCENT3')}; font-size: 13px; font-weight: bold;"
             f" letter-spacing: 2px; background: transparent;")
         prefix = f"{hint}  ·  " if hint else ""
         self._status_detail.setText(f"{prefix}Starting…")
         self._timer_lbl.setStyleSheet(
-            f"color: {ORG_ACT}; font-size: 22px; font-family: 'Courier New',"
-            f" Consolas, monospace; font-weight: bold; background: transparent;")
+            f"color: {_c('STATE2')}; font-size: 22px;"
+            f" font-family: 'Courier New', Consolas, monospace;"
+            f" font-weight: bold; background: transparent;")
         self._dot.setStyleSheet(
-            f"color: {FIRE3}; font-size: 16px; background: transparent;")
+            f"color: {_c('ACCENT3')}; font-size: 16px; background: transparent;")
 
         self._player = Player(self._current_script)
         self._player.progress.connect(self._on_play_progress)
@@ -2178,7 +2436,6 @@ class PhoenixMacro(QMainWindow):
             self._reset_ui()
             return
 
-        # Natural completion — check if more iterations remain
         more = (self._loop_count == 0) or (self._loop_current < self._loop_count)
         if more:
             self._begin_countdown(initial=False)
@@ -2191,8 +2448,7 @@ class PhoenixMacro(QMainWindow):
         if not sel:
             return
         name = sel[0].text().strip()
-        dlg  = ConfirmDialog(self, "Delete Script",
-                             f'Delete  "{name}" ?')
+        dlg  = ConfirmDialog(self, "Delete Script", f'Delete  "{name}" ?')
         if dlg.exec_() == QDialog.Accepted:
             fp = Path(sel[0].data(Qt.UserRole))
             try:
@@ -2203,29 +2459,26 @@ class PhoenixMacro(QMainWindow):
 
     # ── Update ─────────────────────────────────────────────────────────────
     def _on_update_available(self, version: str, url: str):
-        """Called from UpdateChecker (auto, background) when newer release exists."""
         self._update_info = (version, url)
-        # Show badge on settings button so user knows to open Settings
         self._btn_settings.setText("⚙ ●")
         self._btn_settings.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
-                color: {FIRE2};
-                border: 1px solid {FIRE2};
-                border-radius: 7px;
+                color: {_c('ACCENT2')};
+                border: 1px solid {_c('ACCENT2')};
+                border-radius: 10px;
                 font-size: 16px;
-                padding: 2px 10px;
+                padding: 2px 12px;
             }}
             QPushButton:hover {{
-                color: {FIRE3};
-                border-color: {FIRE3};
-                background: #1a0d00;
+                color: {_c('ACCENT3')};
+                border-color: {_c('ACCENT3')};
+                background: {_c('SURF2')};
             }}
-            QPushButton:pressed {{ background: #2d1800; }}
+            QPushButton:pressed {{ background: {_c('BTN2B')}; }}
         """)
 
     def _start_update(self, version: str, url: str):
-        """Begin downloading the update (triggered from SettingsDialog)."""
         if self._downloader and self._downloader.isRunning():
             return
         dest = str(BASE_DIR / "PhoenixMacro_update.exe")
@@ -2237,7 +2490,6 @@ class PhoenixMacro(QMainWindow):
         self._prog_lbl.setText(f"Downloading v{version}  0%")
 
     def _on_dl_progress(self, pct: int):
-        # Replace the version prefix if present, otherwise generic label
         cur = self._prog_lbl.text()
         prefix = cur.rsplit("  ", 1)[0] if "  " in cur else "Downloading"
         self._prog_lbl.setText(f"{prefix}  {pct}%")
@@ -2252,7 +2504,6 @@ class PhoenixMacro(QMainWindow):
 
     # ── Settings & Editor ──────────────────────────────────────────────────
     def _open_settings(self):
-        """Open Settings dialog; pause global hotkeys while it's open."""
         if self._hotkeys:
             self._hotkeys.stop()
 
@@ -2261,23 +2512,21 @@ class PhoenixMacro(QMainWindow):
         dlg.install_update.connect(self._start_update)
         dlg.exec_()
 
-        # Restart hotkeys with (possibly updated) key binding
         if self._hotkeys and HAS_PYNPUT:
             self._hotkeys.start(self._settings.get('hotkey_play_toggle'))
 
     def _on_settings_saved(self):
-        """Apply new hotkey settings to Recorder and GlobalHotkeys."""
         stop_key = self._settings.get('hotkey_record_stop')
         play_key = self._settings.get('hotkey_play_toggle')
         if self._recorder:
             self._recorder._stop_key_str = stop_key
-        # Hint label
         self._hint_lbl.setText(
-            f"{key_to_display(stop_key)} — stop recording   ·   "
-            f"{key_to_display(play_key)} — start / stop script")
+            f"{key_to_display(stop_key)} — stop rec   ·   "
+            f"{key_to_display(play_key)} — play / stop")
+        # Re-apply theme (may have changed)
+        self._apply_theme_styles()
 
     def _on_edit_script(self):
-        """Open Action Editor for the currently selected script."""
         sel = self._list.selectedItems()
         if not sel:
             return
@@ -2289,14 +2538,12 @@ class PhoenixMacro(QMainWindow):
         dlg = ActionEditorDialog(self, fp)
         if dlg.exec_() == QDialog.Accepted:
             self._refresh_scripts()
-            # Re-select the same script after refresh
             for i in range(self._list.count()):
                 if self._list.item(i).data(Qt.UserRole) == fp:
                     self._list.setCurrentRow(i)
                     break
 
     def _apply_update(self, new_exe: str):
-        """Replace this exe after the process exits using a helper .bat script."""
         if not getattr(sys, 'frozen', False):
             self._show_info(
                 "Update downloaded.\n\n"
@@ -2329,40 +2576,44 @@ class PhoenixMacro(QMainWindow):
     # ── UI Helpers ─────────────────────────────────────────────────────────
     def _reset_ui(self):
         self._btn_create.setText("⬤   CREATE SCRIPT")
-        self._btn_create.setStyleSheet(BTN_CREATE_IDLE)
+        self._btn_create.setStyleSheet(_btn_create_idle())
         self._btn_create.setEnabled(True)
         self._btn_start.setText("▶   START SCRIPT")
-        self._btn_start.setStyleSheet(BTN_START_IDLE)
+        self._btn_start.setStyleSheet(_btn_start_idle())
         self._loop_panel.setEnabled(True)
         self._status_lbl.setText("IDLE")
         self._status_lbl.setStyleSheet(
-            f"color: {TEXT}; font-size: 13px; font-weight: bold;"
+            f"color: {_c('TEXT')}; font-size: 13px; font-weight: bold;"
             f" letter-spacing: 2px; background: transparent;")
         self._status_detail.setText("Ready to record")
         self._timer_lbl.setText("00:00")
         self._timer_lbl.setStyleSheet(
-            f"color: {DIM}; font-size: 22px; font-family: 'Courier New',"
-            f" Consolas, monospace; font-weight: bold; background: transparent;")
+            f"color: {_c('DIM')}; font-size: 22px;"
+            f" font-family: 'Courier New', Consolas, monospace;"
+            f" font-weight: bold; background: transparent;")
         self._dot.setStyleSheet(
-            f"color: {DIM}; font-size: 16px; background: transparent;")
+            f"color: {_c('DIM')}; font-size: 16px; background: transparent;")
         self._on_sel_changed()
 
     def _show_error(self, msg: str):
         dlg = QDialog(self)
         dlg.setWindowTitle("Error")
         dlg.setModal(True)
-        dlg.setFixedSize(380, 140)
+        dlg.setFixedSize(400, 150)
         dlg.setWindowFlags(dlg.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-        dlg.setStyleSheet(f"QDialog{{background:{SURF};border:1px solid {BORDER};}}"
-                          f"QLabel{{color:{TEXT};font-size:13px;background:transparent;}}")
+        dlg.setStyleSheet(
+            f"QDialog{{ background:{_c('SURF')}; border:1px solid {_c('BORDER')}; }}"
+            f"QLabel{{ color:{_c('TEXT')}; font-size:13px; background:transparent; }}")
         vb = QVBoxLayout(dlg)
         vb.setContentsMargins(20, 18, 20, 18)
         vb.setSpacing(14)
-        vb.addWidget(QLabel(msg))
+        lbl = QLabel(msg)
+        lbl.setWordWrap(True)
+        vb.addWidget(lbl)
         r = QHBoxLayout()
         r.addStretch()
         ok = QPushButton("OK")
-        ok.setStyleSheet(BTN_DIALOG_OK)
+        ok.setStyleSheet(_btn_dialog_ok())
         ok.setFixedHeight(34)
         ok.clicked.connect(dlg.accept)
         r.addWidget(ok)
@@ -2370,9 +2621,9 @@ class PhoenixMacro(QMainWindow):
         dlg.exec_()
 
     def _show_info(self, msg: str):
-        self._show_error(msg)   # reuse same styled dialog
+        self._show_error(msg)
 
-    # ── Window close ──────────────────────────────────────────────────────
+    # ── Window close ───────────────────────────────────────────────────────
     def closeEvent(self, event):
         if self._recording and self._recorder:
             self._recorder.stop()
@@ -2391,7 +2642,6 @@ class PhoenixMacro(QMainWindow):
 # Entry point
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
-    # Enable per-monitor DPI awareness on Windows (must be before QApplication)
     try:
         from ctypes import windll
         windll.shcore.SetProcessDpiAwareness(1)

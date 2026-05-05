@@ -112,6 +112,13 @@ pyinstaller --onefile --windowed --name PhoenixMacro --icon phoenix.ico --add-da
 
 ## Changelog
 
+### v1.6.0
+- **Horizontal layout** — window now uses a landscape split: Script Library on the left, controls on the right
+- **Gradient background** — window background uses a diagonal gradient instead of flat black
+- **Rounded buttons** — all buttons use larger border-radius (20px pill shape for primary, 12px for secondary)
+- **3 design themes** — choose between Phoenix Fire (fire/orange), Midnight Ocean (blue/cyan), and Neon Storm (purple/magenta) in Settings
+- **Two-panel UI** — left panel shows script library with count badge and meta info; right panel holds all controls
+
 ### v1.5.2
 - Fixed "Failed to load Python DLL" error on auto-update: PyInstaller now extracts to the app folder (`--runtime-tmpdir .`) instead of `%TEMP%`, which Windows Defender monitors aggressively and may delete `python311.dll` right after extraction
 - On startup, leftover `_MEI*` extraction folders from crashed previous runs are cleaned up automatically
