@@ -112,6 +112,12 @@ pyinstaller --onefile --windowed --name PhoenixMacro --icon phoenix.ico --add-da
 
 ## Changelog
 
+### v1.7.0
+- **Auto Clicker** — separate always-on-top window (⚡ AUTO CLICKER button) with configurable interval (presets: 50ms–2s, or custom), mouse button (left/right/middle), position (at cursor or fixed coordinates with on-screen PICK), and repeat count (presets or custom, 0 = infinite)
+- Auto clicker has its own rebindable hotkey (default **F8**) configurable in Settings
+- Hotkey starts/stops clicking even when the Auto Clicker window is minimized
+- All auto clicker settings are persisted between sessions
+
 ### v1.6.2
 - **Larger Settings window** — dialog expanded to 620×530 so all theme and update buttons fit without clipping
 

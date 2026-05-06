@@ -58,7 +58,7 @@ if getattr(sys, 'frozen', False):
                 pass
 
 # ── Version & Update ──────────────────────────────────────────────────────────
-VERSION     = "1.6.2"
+VERSION     = "1.7.0"
 GITHUB_REPO = "PhoenixAnalist/phoenix-macro"
 
 _NO_WIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -697,20 +697,24 @@ class Player(QThread):
 # GlobalHotkeys
 # ─────────────────────────────────────────────────────────────────────────────
 class GlobalHotkeys(QObject):
-    hotkey_triggered = pyqtSignal()
+    hotkey_triggered      = pyqtSignal()
+    autoclicker_triggered = pyqtSignal()
 
     def __init__(self):
         super().__init__()
         self._listener = None
 
-    def start(self, key_str: str = 'Key.f10'):
-        target = parse_pynput_key(key_str)
+    def start(self, play_key_str: str = 'Key.f10', ac_key_str: str = 'Key.f8'):
+        play_key = parse_pynput_key(play_key_str)
+        ac_key   = parse_pynput_key(ac_key_str)
         obj = self
 
         def on_press(key):
             try:
-                if key == target:
+                if key == play_key:
                     obj.hotkey_triggered.emit()
+                elif key == ac_key:
+                    obj.autoclicker_triggered.emit()
             except Exception:
                 pass
 
@@ -864,7 +868,14 @@ class AppSettings:
     _DEFAULTS = {
         'hotkey_record_stop': 'Key.f9',
         'hotkey_play_toggle': 'Key.f10',
+        'hotkey_autoclicker': 'Key.f8',
         'theme':              'Phoenix Fire',
+        'ac_interval_ms':     100,
+        'ac_button':          'left',
+        'ac_position':        'cursor',
+        'ac_fixed_x':         0,
+        'ac_fixed_y':         0,
+        'ac_count':           0,
     }
 
     def __init__(self):
@@ -1183,6 +1194,517 @@ class ActionEditorDialog(QDialog):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# AutoClicker  (background thread that fires mouse clicks at a set interval)
+# ─────────────────────────────────────────────────────────────────────────────
+class AutoClicker(QThread):
+    clicked     = pyqtSignal(int)   # cumulative click count
+    finished_ac = pyqtSignal()
+
+    def __init__(self, interval_ms: int, button: str, count: int,
+                 x: int = None, y: int = None):
+        super().__init__()
+        self._interval_ms = max(10, interval_ms)
+        self._button      = button
+        self._count       = count   # 0 = infinite
+        self._x           = x
+        self._y           = y
+        self._stop_flag   = False
+
+    def stop(self):
+        self._stop_flag = True
+
+    def run(self):
+        if not HAS_PYNPUT:
+            self.finished_ac.emit()
+            return
+        mc  = MC()
+        btn = (Button.right  if self._button == 'right'
+               else Button.middle if self._button == 'middle'
+               else Button.left)
+        i   = 0
+        interval_s = self._interval_ms / 1000.0
+        while not self._stop_flag:
+            if self._x is not None:
+                mc.position = (self._x, self._y)
+            mc.click(btn)
+            i += 1
+            self.clicked.emit(i)
+            if self._count > 0 and i >= self._count:
+                break
+            end = time.perf_counter() + interval_s
+            while time.perf_counter() < end and not self._stop_flag:
+                time.sleep(min(0.02, end - time.perf_counter()))
+        self.finished_ac.emit()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AutoClickerDialog  (non-modal, stays on top, configures and drives AutoClicker)
+# ─────────────────────────────────────────────────────────────────────────────
+class AutoClickerDialog(QDialog):
+    def __init__(self, parent=None, settings: 'AppSettings' = None):
+        super().__init__(parent, Qt.Window | Qt.WindowStaysOnTopHint)
+        self._settings      = settings
+        self._clicker: AutoClicker | None = None
+        self._pick_listener = None
+
+        self.setWindowTitle("Auto Clicker")
+        self.setFixedSize(370, 500)
+        self.setWindowFlags(
+            self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setStyleSheet(f"""
+            QDialog  {{ background: {_c('BG')}; border: 1px solid {_c('BORDER')}; }}
+            QLabel   {{ color: {_c('TEXT')}; font-size: 12px; background: transparent; }}
+            QLineEdit {{
+                background: {_c('SURF')};
+                color: {_c('TEXT')};
+                border: 1px solid {_c('BORDER')};
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 12px;
+                selection-background-color: {_c('ACCENT1')};
+            }}
+            QLineEdit:focus {{ border-color: {_c('ACCENT2')}; }}
+        """)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(18, 14, 18, 16)
+        lay.setSpacing(10)
+
+        # ── Title ──────────────────────────────────────────────────────────
+        title_row = QHBoxLayout()
+        t = QLabel("⚡  AUTO CLICKER")
+        t.setStyleSheet(
+            f"color: {_c('ACCENT3')}; font-size: 15px; font-weight: bold;"
+            f" letter-spacing: 3px; background: transparent;")
+        title_row.addWidget(t)
+        title_row.addStretch()
+        self._dot = QLabel("●")
+        self._dot.setStyleSheet(
+            f"color: {_c('DIM')}; font-size: 14px; background: transparent;")
+        title_row.addWidget(self._dot)
+        lay.addLayout(title_row)
+
+        # ── Interval ───────────────────────────────────────────────────────
+        lay.addWidget(self._section_lbl("INTERVAL"))
+        int_frame = self._frame()
+        if_lay = QVBoxLayout(int_frame)
+        if_lay.setContentsMargins(12, 10, 12, 10)
+        if_lay.setSpacing(7)
+
+        preset_row = QHBoxLayout()
+        preset_row.setSpacing(5)
+        self._int_btns: list[QPushButton] = []
+        for lbl, val in [("50ms", 50), ("100ms", 100), ("250ms", 250),
+                         ("500ms", 500), ("1s", 1000), ("2s", 2000)]:
+            btn = QPushButton(lbl)
+            btn.setFixedHeight(26)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setProperty("iv", val)
+            btn.clicked.connect(lambda _, v=val: self._set_interval(v))
+            self._int_btns.append(btn)
+            preset_row.addWidget(btn)
+        if_lay.addLayout(preset_row)
+
+        custom_row = QHBoxLayout()
+        custom_row.setSpacing(6)
+        custom_row.addWidget(QLabel("Custom:"))
+        self._inp_interval = QLineEdit()
+        self._inp_interval.setFixedWidth(70)
+        self._inp_interval.setFixedHeight(26)
+        self._inp_interval.setPlaceholderText("ms")
+        self._inp_interval.editingFinished.connect(self._on_custom_interval)
+        custom_row.addWidget(self._inp_interval)
+        custom_row.addWidget(QLabel("ms"))
+        custom_row.addStretch()
+        if_lay.addLayout(custom_row)
+        lay.addWidget(int_frame)
+
+        # ── Button ─────────────────────────────────────────────────────────
+        lay.addWidget(self._section_lbl("MOUSE BUTTON"))
+        btn_frame = self._frame()
+        bf_lay = QHBoxLayout(btn_frame)
+        bf_lay.setContentsMargins(12, 10, 12, 10)
+        bf_lay.setSpacing(8)
+        self._btn_btns: dict[str, QPushButton] = {}
+        for lbl, val in [("LEFT", "left"), ("RIGHT", "right"), ("MIDDLE", "middle")]:
+            b = QPushButton(lbl)
+            b.setFixedHeight(28)
+            b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(lambda _, v=val: self._set_button(v))
+            self._btn_btns[val] = b
+            bf_lay.addWidget(b)
+        bf_lay.addStretch()
+        lay.addWidget(btn_frame)
+
+        # ── Position ───────────────────────────────────────────────────────
+        lay.addWidget(self._section_lbl("POSITION"))
+        pos_frame = self._frame()
+        pf_lay = QVBoxLayout(pos_frame)
+        pf_lay.setContentsMargins(12, 10, 12, 10)
+        pf_lay.setSpacing(7)
+
+        pos_row = QHBoxLayout()
+        pos_row.setSpacing(8)
+        self._pos_btns: dict[str, QPushButton] = {}
+        for lbl, val in [("AT CURSOR", "cursor"), ("FIXED COORDS", "fixed")]:
+            b = QPushButton(lbl)
+            b.setFixedHeight(28)
+            b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(lambda _, v=val: self._set_position(v))
+            self._pos_btns[val] = b
+            pos_row.addWidget(b)
+        pos_row.addStretch()
+        pf_lay.addLayout(pos_row)
+
+        coord_row = QHBoxLayout()
+        coord_row.setSpacing(6)
+        coord_row.addWidget(QLabel("X:"))
+        self._inp_x = QLineEdit()
+        self._inp_x.setFixedWidth(60)
+        self._inp_x.setFixedHeight(26)
+        coord_row.addWidget(self._inp_x)
+        coord_row.addWidget(QLabel("Y:"))
+        self._inp_y = QLineEdit()
+        self._inp_y.setFixedWidth(60)
+        self._inp_y.setFixedHeight(26)
+        coord_row.addWidget(self._inp_y)
+        self._btn_pick = QPushButton("PICK")
+        self._btn_pick.setFixedHeight(26)
+        self._btn_pick.setFixedWidth(54)
+        self._btn_pick.setCursor(Qt.PointingHandCursor)
+        self._btn_pick.setStyleSheet(_btn_loop_inactive())
+        self._btn_pick.clicked.connect(self._on_pick)
+        coord_row.addWidget(self._btn_pick)
+        coord_row.addStretch()
+        self._coord_widget = QWidget()
+        self._coord_widget.setLayout(coord_row)
+        self._coord_widget.setStyleSheet("background: transparent;")
+        pf_lay.addWidget(self._coord_widget)
+        lay.addWidget(pos_frame)
+
+        # ── Repeat ─────────────────────────────────────────────────────────
+        lay.addWidget(self._section_lbl("REPEAT"))
+        rep_frame = self._frame()
+        rf_lay = QVBoxLayout(rep_frame)
+        rf_lay.setContentsMargins(12, 10, 12, 10)
+        rf_lay.setSpacing(7)
+
+        rep_row = QHBoxLayout()
+        rep_row.setSpacing(5)
+        self._rep_btns: list[QPushButton] = []
+        for lbl, val in [("∞", 0), ("10", 10), ("50", 50), ("100", 100)]:
+            b = QPushButton(lbl)
+            b.setFixedHeight(26)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setProperty("rv", val)
+            b.clicked.connect(lambda _, v=val: self._set_count(v))
+            self._rep_btns.append(b)
+            rep_row.addWidget(b)
+        rep_row.addStretch()
+        rf_lay.addLayout(rep_row)
+
+        rep_custom = QHBoxLayout()
+        rep_custom.setSpacing(6)
+        rep_custom.addWidget(QLabel("Custom:"))
+        self._inp_count = QLineEdit()
+        self._inp_count.setFixedWidth(70)
+        self._inp_count.setFixedHeight(26)
+        self._inp_count.setPlaceholderText("clicks")
+        self._inp_count.editingFinished.connect(self._on_custom_count)
+        rep_custom.addWidget(self._inp_count)
+        rep_custom.addWidget(QLabel("clicks"))
+        rep_custom.addStretch()
+        rf_lay.addLayout(rep_custom)
+        lay.addWidget(rep_frame)
+
+        # ── Status row ─────────────────────────────────────────────────────
+        status_row = QHBoxLayout()
+        self._click_lbl = QLabel("Clicks: 0")
+        self._click_lbl.setStyleSheet(
+            f"color: {_c('DIM')}; font-size: 11px; background: transparent;")
+        status_row.addWidget(self._click_lbl)
+        status_row.addStretch()
+        ac_key = settings.get('hotkey_autoclicker') if settings else 'Key.f8'
+        self._hotkey_lbl = QLabel(
+            f"{key_to_display(ac_key)} — start / stop")
+        self._hotkey_lbl.setStyleSheet(
+            f"color: {_c('DIM')}; font-size: 10px; letter-spacing: 1px;"
+            f" background: transparent;")
+        status_row.addWidget(self._hotkey_lbl)
+        lay.addLayout(status_row)
+
+        # ── Start / Stop button ────────────────────────────────────────────
+        self._btn_start = QPushButton("⚡   START AUTO CLICKER")
+        self._btn_start.setMinimumHeight(46)
+        self._btn_start.setCursor(Qt.PointingHandCursor)
+        self._btn_start.clicked.connect(self._toggle)
+        lay.addWidget(self._btn_start)
+
+        # Apply saved settings to UI
+        self._load_settings()
+
+    # ── helpers ────────────────────────────────────────────────────────────
+    @staticmethod
+    def _frame() -> QFrame:
+        f = QFrame()
+        f.setStyleSheet(
+            f"QFrame {{ background: {_c('SURF')}; border: 1px solid {_c('BORDER')};"
+            f" border-radius: 8px; }}"
+            f"QLabel {{ background: transparent; border: none; }}")
+        return f
+
+    @staticmethod
+    def _section_lbl(text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            f"color: {_c('ACCENT2')}; font-size: 10px; font-weight: bold;"
+            f" letter-spacing: 3px; background: transparent;")
+        return lbl
+
+    # ── settings load / save ───────────────────────────────────────────────
+    def _load_settings(self):
+        s = self._settings
+        iv  = int(s.get('ac_interval_ms')) if s else 100
+        btn = s.get('ac_button')           if s else 'left'
+        pos = s.get('ac_position')         if s else 'cursor'
+        fx  = int(s.get('ac_fixed_x'))     if s else 0
+        fy  = int(s.get('ac_fixed_y'))     if s else 0
+        cnt = int(s.get('ac_count'))       if s else 0
+
+        # Interval — find preset or set custom field
+        matched = any(b.property("iv") == iv for b in self._int_btns)
+        if matched:
+            self._set_interval(iv, save=False)
+        else:
+            for b in self._int_btns:
+                b.setStyleSheet(_btn_loop_inactive())
+            self._inp_interval.setText(str(iv))
+            self._interval_ms = iv
+
+        self._set_button(btn, save=False)
+        self._set_position(pos, save=False)
+        self._inp_x.setText(str(fx))
+        self._inp_y.setText(str(fy))
+
+        matched_cnt = any(b.property("rv") == cnt for b in self._rep_btns)
+        if matched_cnt:
+            self._set_count(cnt, save=False)
+        else:
+            for b in self._rep_btns:
+                b.setStyleSheet(_btn_loop_inactive())
+            self._inp_count.setText(str(cnt) if cnt > 0 else "")
+            self._count = cnt
+
+        self._update_start_btn_idle()
+
+    def _save_settings(self):
+        if not self._settings:
+            return
+        s = self._settings
+        s.set('ac_interval_ms', getattr(self, '_interval_ms', 100))
+        s.set('ac_button',      getattr(self, '_ac_button',   'left'))
+        s.set('ac_position',    getattr(self, '_ac_position', 'cursor'))
+        try:
+            s.set('ac_fixed_x', int(self._inp_x.text()))
+            s.set('ac_fixed_y', int(self._inp_y.text()))
+        except ValueError:
+            pass
+        s.set('ac_count', getattr(self, '_count', 0))
+        s.save()
+
+    # ── setters ────────────────────────────────────────────────────────────
+    def _set_interval(self, ms: int, save: bool = True):
+        self._interval_ms = ms
+        for b in self._int_btns:
+            b.setStyleSheet(
+                _btn_loop_active() if b.property("iv") == ms
+                else _btn_loop_inactive())
+        self._inp_interval.setText("")
+        if save:
+            self._save_settings()
+
+    def _set_button(self, val: str, save: bool = True):
+        self._ac_button = val
+        for k, b in self._btn_btns.items():
+            b.setStyleSheet(
+                _btn_loop_active() if k == val else _btn_loop_inactive())
+        if save:
+            self._save_settings()
+
+    def _set_position(self, val: str, save: bool = True):
+        self._ac_position = val
+        for k, b in self._pos_btns.items():
+            b.setStyleSheet(
+                _btn_loop_active() if k == val else _btn_loop_inactive())
+        self._coord_widget.setVisible(val == 'fixed')
+        if save:
+            self._save_settings()
+
+    def _set_count(self, n: int, save: bool = True):
+        self._count = n
+        for b in self._rep_btns:
+            b.setStyleSheet(
+                _btn_loop_active() if b.property("rv") == n
+                else _btn_loop_inactive())
+        self._inp_count.setText("")
+        if save:
+            self._save_settings()
+
+    def _on_custom_interval(self):
+        try:
+            v = max(10, int(self._inp_interval.text()))
+        except ValueError:
+            return
+        self._interval_ms = v
+        for b in self._int_btns:
+            b.setStyleSheet(_btn_loop_inactive())
+        self._save_settings()
+
+    def _on_custom_count(self):
+        try:
+            v = max(1, int(self._inp_count.text()))
+        except ValueError:
+            return
+        self._count = v
+        for b in self._rep_btns:
+            b.setStyleSheet(_btn_loop_inactive())
+        self._save_settings()
+
+    # ── PICK ───────────────────────────────────────────────────────────────
+    def _on_pick(self):
+        self._btn_pick.setEnabled(False)
+        self._btn_pick.setText("…")
+        self.showMinimized()
+        dlg = self
+        QTimer.singleShot(400, dlg._start_pick_listener)
+
+    def _start_pick_listener(self):
+        if not HAS_PYNPUT:
+            self._finish_pick(0, 0)
+            return
+        dlg = self
+
+        def on_click(x, y, _, pressed):
+            if pressed:
+                QTimer.singleShot(0, lambda: dlg._finish_pick(int(x), int(y)))
+                return False
+
+        self._pick_listener = pm.Listener(on_click=on_click)
+        self._pick_listener.daemon = True
+        self._pick_listener.start()
+
+    def _finish_pick(self, x: int, y: int):
+        if self._pick_listener:
+            try:
+                self._pick_listener.stop()
+            except Exception:
+                pass
+            self._pick_listener = None
+        self._inp_x.setText(str(x))
+        self._inp_y.setText(str(y))
+        self._btn_pick.setEnabled(True)
+        self._btn_pick.setText("PICK")
+        self.showNormal()
+        self.activateWindow()
+        self._save_settings()
+
+    # ── start / stop ───────────────────────────────────────────────────────
+    def toggle_from_hotkey(self):
+        """Called by the global hotkey — marshalled to Qt thread by caller."""
+        self._toggle()
+
+    def _toggle(self):
+        if self._clicker and self._clicker.isRunning():
+            self._stop_clicking()
+        else:
+            self._start_clicking()
+
+    def _start_clicking(self):
+        if not HAS_PYNPUT:
+            return
+        x, y = None, None
+        if getattr(self, '_ac_position', 'cursor') == 'fixed':
+            try:
+                x = int(self._inp_x.text())
+                y = int(self._inp_y.text())
+            except ValueError:
+                x, y = 0, 0
+
+        self._clicker = AutoClicker(
+            interval_ms = getattr(self, '_interval_ms', 100),
+            button      = getattr(self, '_ac_button',   'left'),
+            count       = getattr(self, '_count',        0),
+            x=x, y=y,
+        )
+        self._clicker.clicked.connect(self._on_clicked)
+        self._clicker.finished_ac.connect(self._on_finished)
+        self._clicker.start()
+
+        self._dot.setStyleSheet(
+            f"color: {_c('ACCENT3')}; font-size: 14px; background: transparent;")
+        self._click_lbl.setText("Clicks: 0")
+        self._btn_start.setText("⬛   STOP AUTO CLICKER")
+        self._btn_start.setStyleSheet(f"""
+            QPushButton {{
+                {_btn_base()}
+                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 {_c('BTN2H')}, stop:1 {_c('BTN2A')});
+                color: {_c('ACCENT3')};
+                border: 2px solid {_c('ACCENT2')};
+            }}
+            QPushButton:hover {{
+                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 {_c('ACCENT2')}, stop:1 {_c('BTN2A')});
+            }}
+        """)
+
+    def _stop_clicking(self):
+        if self._clicker:
+            self._clicker.stop()
+
+    def _on_clicked(self, n: int):
+        self._click_lbl.setText(f"Clicks: {n}")
+
+    def _on_finished(self):
+        self._clicker = None
+        self._dot.setStyleSheet(
+            f"color: {_c('DIM')}; font-size: 14px; background: transparent;")
+        self._update_start_btn_idle()
+
+    def _update_start_btn_idle(self):
+        self._btn_start.setText("⚡   START AUTO CLICKER")
+        self._btn_start.setStyleSheet(f"""
+            QPushButton {{
+                {_btn_base()}
+                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 {_c('BTN2A')}, stop:1 {_c('BTN2B')});
+                color: {_c('ACCENT3')};
+                border: 1px solid {_c('ACCENT2')};
+            }}
+            QPushButton:hover {{
+                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 {_c('BTN2H')}, stop:1 {_c('BTN2A')});
+                border-color: {_c('ACCENT3')};
+                color: #ffffff;
+            }}
+        """)
+
+    def update_hotkey_label(self, key_str: str):
+        self._hotkey_lbl.setText(f"{key_to_display(key_str)} — start / stop")
+
+    def closeEvent(self, event):
+        if self._clicker and self._clicker.isRunning():
+            self._clicker.stop()
+        if self._pick_listener:
+            try:
+                self._pick_listener.stop()
+            except Exception:
+                pass
+        self._save_settings()
+        event.accept()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # SettingsDialog
 # ─────────────────────────────────────────────────────────────────────────────
 class SettingsDialog(QDialog):
@@ -1197,6 +1719,7 @@ class SettingsDialog(QDialog):
         self._pending        = {
             'record_stop': settings.get('hotkey_record_stop') if settings else 'Key.f9',
             'play_toggle': settings.get('hotkey_play_toggle') if settings else 'Key.f10',
+            'autoclicker': settings.get('hotkey_autoclicker') if settings else 'Key.f8',
         }
         self._pending_theme    = settings.get('theme') if settings else 'Phoenix Fire'
         self._capture_target   = None
@@ -1285,6 +1808,14 @@ class SettingsDialog(QDialog):
             self._pending['play_toggle'], 'play_toggle')
         r2.addWidget(self._btn_play_key)
         hk_lay.addLayout(r2)
+
+        r3 = QHBoxLayout()
+        r3.addWidget(QLabel("Start / stop auto clicker:"))
+        r3.addStretch()
+        self._btn_ac_key = self._hotkey_btn(
+            self._pending['autoclicker'], 'autoclicker')
+        r3.addWidget(self._btn_ac_key)
+        hk_lay.addLayout(r3)
 
         hint = QLabel("Click a key button, then press any keyboard key to rebind.")
         hint.setStyleSheet(
@@ -1487,6 +2018,7 @@ class SettingsDialog(QDialog):
         if self._settings:
             self._settings.set('hotkey_record_stop', self._pending['record_stop'])
             self._settings.set('hotkey_play_toggle', self._pending['play_toggle'])
+            self._settings.set('hotkey_autoclicker', self._pending['autoclicker'])
             self._settings.set('theme', self._pending_theme)
             self._settings.save()
         self.settings_saved.emit()
@@ -1544,12 +2076,18 @@ class PhoenixMacro(QMainWindow):
         self._blink_timer.timeout.connect(self._blink)
         self._blink_on = True
 
+        self._ac_dialog: AutoClickerDialog | None = None
+
         if HAS_PYNPUT:
             self._recorder._stop_key_str = self._settings.get('hotkey_record_stop')
             self._recorder.hotkey_stop.connect(self._stop_recording)
             self._hotkeys = GlobalHotkeys()
             self._hotkeys.hotkey_triggered.connect(self._on_f10)
-            self._hotkeys.start(self._settings.get('hotkey_play_toggle'))
+            self._hotkeys.autoclicker_triggered.connect(self._on_ac_hotkey)
+            self._hotkeys.start(
+                self._settings.get('hotkey_play_toggle'),
+                self._settings.get('hotkey_autoclicker'),
+            )
         else:
             self._hotkeys = None
 
@@ -1845,6 +2383,14 @@ class PhoenixMacro(QMainWindow):
         lay.addLayout(hint_row)
 
         lay.addStretch()
+
+        # ── Auto Clicker button ────────────────────────────────────────────
+        self._btn_autoclicker = QPushButton("⚡   AUTO CLICKER")
+        self._btn_autoclicker.setStyleSheet(_btn_update())
+        self._btn_autoclicker.setMinimumHeight(40)
+        self._btn_autoclicker.setCursor(Qt.PointingHandCursor)
+        self._btn_autoclicker.clicked.connect(self._open_autoclicker)
+        lay.addWidget(self._btn_autoclicker)
 
         return frame
 
@@ -2515,18 +3061,37 @@ class PhoenixMacro(QMainWindow):
         dlg.exec_()
 
         if self._hotkeys and HAS_PYNPUT:
-            self._hotkeys.start(self._settings.get('hotkey_play_toggle'))
+            self._hotkeys.start(
+                self._settings.get('hotkey_play_toggle'),
+                self._settings.get('hotkey_autoclicker'),
+            )
 
     def _on_settings_saved(self):
         stop_key = self._settings.get('hotkey_record_stop')
         play_key = self._settings.get('hotkey_play_toggle')
+        ac_key   = self._settings.get('hotkey_autoclicker')
         if self._recorder:
             self._recorder._stop_key_str = stop_key
         self._hint_lbl.setText(
             f"{key_to_display(stop_key)} — stop rec   ·   "
             f"{key_to_display(play_key)} — play / stop")
+        if self._ac_dialog:
+            self._ac_dialog.update_hotkey_label(ac_key)
         # Re-apply theme (may have changed)
         self._apply_theme_styles()
+
+    def _open_autoclicker(self):
+        if self._ac_dialog and self._ac_dialog.isVisible():
+            self._ac_dialog.activateWindow()
+            return
+        self._ac_dialog = AutoClickerDialog(self, self._settings)
+        self._ac_dialog.show()
+
+    def _on_ac_hotkey(self):
+        if self._ac_dialog and self._ac_dialog.isVisible():
+            self._ac_dialog.toggle_from_hotkey()
+        else:
+            self._open_autoclicker()
 
     def _on_edit_script(self):
         sel = self._list.selectedItems()
